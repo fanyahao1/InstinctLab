@@ -15,7 +15,7 @@ from instinct_rl.env import VecEnv
 class InstinctRlVecEnvWrapper(VecEnv):
     """Wraps around Isaac Lab environment for Instinct-RL library
     Reference:
-       https://github.com/ziwenzhuang/instinct_rl/blob/master/instinct_rl/env/vec_env.py
+       https://github.com/project-instinct/instinct_rl/blob/master/instinct_rl/env/vec_env.py
     """
 
     def __init__(self, env: ManagerBasedRLEnv):

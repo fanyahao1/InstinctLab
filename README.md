@@ -17,7 +17,7 @@ We aim at industralize Reinforcement Learning for Humanoid (legged robots) whole
 
 - `Isolation` Work outside the core Isaac Lab repository, ensuring that your development efforts remain self-contained.
 - `Flexibility` This template is set up to allow your code to be run as an extension in Omniverse.
-- `Unified Ecosystem` This repository is a part of the Project-Instinct ecosystem, which includes the [instinct_rl](https://github.com/ziwenzhuang/instinct_rl) and [instinct_onboard](https://github.com/ziwenzhuang/instinct_onboard) repositories.
+- `Unified Ecosystem` This repository is a part of the Project-Instinct ecosystem, which includes the [instinct_rl](https://github.com/project-instinct/instinct_rl) and [instinct_onboard](https://github.com/project-instinct/instinct_onboard) repositories.
     - The core design of this ecosystem is to treat each experiment as a standalone structured folder, which start with a timestamp as a unique identifier.
     - Adding `--exportonnx` flag to the `play.py` script will export the policy as an ONNX model. After that, you should directly copy the logdir to the robot computer and use the `instinct_onboard` workflow to run the policy on the real robot.
 
@@ -35,10 +35,10 @@ See [CONTRIBUTORS.md](CONTRIBUTORS.md) for a list of acknowledged contributors.
 
 - Install Isaac Lab by following the [installation guide](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html) and **Switch to 4.5.0 version**. We recommend using the conda installation as it simplifies calling Python scripts from the terminal. At the time of release, the IsaacLab commit we are using is `9be0de5f6196374fa793dc33978434542e7a40d3` on May 5 2025.
 
-- Install Instinct-RL by following the [installation guide](https://github.com/ziwenzhuang/instinct_rl/blob/main/README.md).
+- Install Instinct-RL by following the [installation guide](https://github.com/project-instinct/instinct_rl/blob/main/README.md).
     TL; DR;
     ```bash
-    git clone https://github.com/ziwenzhuang/instinct_rl.git
+    git clone https://github.com/project-instinct/instinct_rl.git
     python -m pip install -e instinct_rl
     ```
 
@@ -46,10 +46,10 @@ See [CONTRIBUTORS.md](CONTRIBUTORS.md) for a list of acknowledged contributors.
 
     ```bash
     # Option 1: HTTPS
-    git clone https://github.com/ziwenzhuang/instinctlab.git
+    git clone https://github.com/project-instinct/instinctlab.git
 
     # Option 2: SSH
-    git clone git@github.com:ziwenzhuang/instinctlab.git
+    git clone git@github.com:project-instinct/instinctlab.git
     ```
 
 - Using a python interpreter that has Isaac Lab installed, install the library
