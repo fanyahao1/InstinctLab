@@ -113,14 +113,14 @@ class CylinderSpatialGrid:
         self.cell_offsets[-1] = len(self.cell_indices)
         self.cell_indices = np.array(self.cell_indices, dtype=np.int32)
 
-        self.cell_offsets_wp = wp.array(self.cell_offsets, dtype=wp.int32)
-        self.cell_indices_wp = wp.array(self.cell_indices, dtype=wp.int32)
+        self.cell_offsets_wp = wp.array(self.cell_offsets, dtype=wp.int32, device=str(self.device))
+        self.cell_indices_wp = wp.array(self.cell_indices, dtype=wp.int32, device=str(self.device))
         self.cell_size_wp = wp.vec3(*self.cell_size)
         self.bbox_min_wp = wp.vec3(*self.bbox_min)
         self.grid_res_wp = wp.vec3i(*self.grid_res)
-        self.cylinder_start_wp = wp.array(self.cylinders_np[:, :3], dtype=wp.vec3)
-        self.cylinder_end_wp = wp.array(self.cylinders_np[:, 3:6], dtype=wp.vec3)
-        self.cylinder_thickness_wp = wp.array(self.cylinders_np[:, 6], dtype=wp.float32)
+        self.cylinder_start_wp = wp.array(self.cylinders_np[:, :3], dtype=wp.vec3, device=str(self.device))
+        self.cylinder_end_wp = wp.array(self.cylinders_np[:, 3:6], dtype=wp.vec3, device=str(self.device))
+        self.cylinder_thickness_wp = wp.array(self.cylinders_np[:, 6], dtype=wp.float32, device=str(self.device))
 
     def get_points_penetration_offset(self, points: torch.Tensor) -> torch.Tensor:
         """Compute the penetration depth of points into cylinders in the grid.
