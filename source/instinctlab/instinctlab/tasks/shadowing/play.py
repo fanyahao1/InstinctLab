@@ -239,16 +239,6 @@ def main():
             obs, infos = env.get_observations()
             ppo_runner.export_as_onnx(obs, export_model_dir)
 
-            if env.unwrapped.scene["motion_reference"].num_link_of_interests > 0:
-                import instinctlab.utils.humanoid_fk as humanoid_fk
-
-                humanoid_fk.export_forward_kinematics_as_onnx(
-                    env.unwrapped.scene["motion_reference"]._robot_kinematics_chain,
-                    env.unwrapped.scene["motion_reference"].cfg.link_of_interests,
-                    env.unwrapped.scene["robot"].joint_names,
-                    export_model_dir,
-                )
-
     # reset environment
     obs, infos = env.get_observations()
     timestep = 0
@@ -371,14 +361,14 @@ if __name__ == "__main__":
     # run the main function
     import numpy as np
 
-    import pandas as pd
-
     results = []
     x = f"{args_cli.x_offset:.2f}" if args_cli.x_offset is not None else None
     y = f"{args_cli.y_offset:.2f}" if args_cli.y_offset is not None else None
     print(f"\n=== Running grid: x={x}, y={y} ===")
     total_success, total_traj = main()
     if args_cli.x_offset is not None and args_cli.y_offset is not None:
+        import pandas as pd
+
         results.append(
             {"x": args_cli.x_offset, "y": args_cli.y_offset, "total_success": total_success, "total_traj": total_traj}
         )

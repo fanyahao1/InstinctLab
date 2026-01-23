@@ -7,7 +7,7 @@ from instinctlab.utils.wrappers.instinct_rl import (
     InstinctRlActorCriticCfg,
     InstinctRlConv2dHeadCfg,
     InstinctRlEncoderActorCriticCfg,
-    InstinctRlEncoderVaeActorCfg,
+    InstinctRlEncoderVaeActorCriticCfg,
     InstinctRlNormalizerCfg,
     InstinctRlOnPolicyRunnerCfg,
     InstinctRlPpoAlgorithmCfg,
@@ -46,7 +46,7 @@ class PolicyCfg(InstinctRlEncoderActorCriticCfg):
 
 
 @configclass
-class VaePolicyCfg(InstinctRlEncoderVaeActorCfg):
+class VaePolicyCfg(InstinctRlEncoderVaeActorCriticCfg):
     encoder_configs = Conv2dHeadEncoderCfg()
 
     vae_encoder_kwargs = {
@@ -148,7 +148,7 @@ class AlgorithmCfg(InstinctRlPpoAlgorithmCfg):
         "num_rewards": 1,
     }
     teacher_logdir = os.path.expanduser(
-        "~/Data/instinctlab_logs/instinct_rl/g1_perceptive_shadowing/20251126_034830_g1Perceptive_4MotionsKneelClimbStep1_evenRandomReset_concatMotionBins_pTorqueLimtRatio5e-02_proprioHist8__GPU2"
+        "~/Data/instinctlab_logs/instinct_rl/g1_perceptive_shadowing/20260111_103654_g1Perceptive_4MotionsKneelClimbStep1_concatMotionBins__GPU0_from20260108_032900"
     )
 
 

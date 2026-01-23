@@ -102,7 +102,7 @@ class InstinctRlMoEActorCriticCfg(InstinctRlActorCriticCfg):
 
 
 @configclass
-class InstinctRlVaeActorCfg(InstinctRlActorCriticCfg):
+class InstinctRlVaeActorCriticCfg(InstinctRlActorCriticCfg):
     class_name: str = "VaeActor"
 
     vae_encoder_kwargs: dict = MISSING
@@ -113,6 +113,15 @@ class InstinctRlVaeActorCfg(InstinctRlActorCriticCfg):
 
     vae_latent_size: int = 16
     """ The latent size of the VAE."""
+
+    critic_hidden_dims: list[int] = [512, 256, 128]
+    """The hidden dimensions of the critic network (typically not used for VAE distillation)."""
+
+    init_noise_std: float = 1e-4
+    """The initial noise standard deviation for the critic network (typically not used for VAE distillation)."""
+
+    activation: str = "elu"
+    """The activation function for the critic network (typically not used for VAE distillation)."""
 
 
 @configclass
@@ -146,13 +155,13 @@ class InstinctRlEncoderMoEActorCriticCfg(
 
 
 @configclass
-class InstinctRlEncoderVaeActorCfg(
+class InstinctRlEncoderVaeActorCriticCfg(
     EncoderCfgMixin,
-    InstinctRlVaeActorCfg,
+    InstinctRlVaeActorCriticCfg,
 ):
     """Configuration for the encoder actor networks."""
 
-    class_name = "EncoderVaeActor"
+    class_name = "EncoderVaeActorCritic"
 
 
 @configclass
