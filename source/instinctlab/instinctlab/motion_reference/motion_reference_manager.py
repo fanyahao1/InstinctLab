@@ -328,6 +328,9 @@ class MotionReferenceManager(SensorBase):
 
     def reset(self, env_ids: Sequence[int] | torch.Tensor | None = None):
         """Reset the motion reference manager as a sensor, also reset the motion reference components."""
+        assert (
+            self.is_initialized
+        ), "Motion reference manager is not initialized successfully. Please check the error message above."
         super().reset(env_ids)
         if env_ids is None:
             env_ids = self.ALL_INDICES

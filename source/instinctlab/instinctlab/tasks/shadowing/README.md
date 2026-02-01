@@ -21,7 +21,7 @@ python scripts/instinct_rl/train.py --headless --task=Instinct-BeyondMimic-Plane
 
 3. Play trained policy (load_run must be provided, absolute path is recommended, or use `--no_resume` to visualize untrained policy):
 ```bash
-python source/instinctlab/instinctlab/tasks/shadowing/play.py --task=Instinct-BeyondMimic-Plane-G1-v0 --load_run=<run_name>
+python scripts/instinct_rl/play.py --task=Instinct-BeyondMimic-Plane-G1-v0 --load_run=<run_name>
 ```
 
 ### Whole Body Shadowing
@@ -41,7 +41,7 @@ python scripts/instinct_rl/train.py --headless --task=Instinct-Shadowing-WholeBo
 
 3. Play trained policy (load_run must be provided, absolute path is recommended, or use `--no_resume` to visualize untrained policy):
 ```bash
-python source/instinctlab/instinctlab/tasks/shadowing/play.py --task=Instinct-Shadowing-WholeBody-Plane-G1-v0 --load_run=<run_name>
+python scripts/instinct_rl/play.py --task=Instinct-Shadowing-WholeBody-Plane-G1-v0 --load_run=<run_name>
 ```
 
 ### Perceptive Shadowing
