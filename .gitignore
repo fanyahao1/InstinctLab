@@ -36,3 +36,9 @@ _isaac_sim*
 _repo
 _build
 .lastformat
+
+*.gitignore
+
+**/assets_datasets/*
+**/data/*
+**/models/*
