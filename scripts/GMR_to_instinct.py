@@ -12,10 +12,25 @@ import tqdm
 import pytorch_kinematics as pk
 
 
+class NumpyCompatUnpickler(pkl.Unpickler):
+    def find_class(self, module, name):
+        if module == "numpy._core.numeric":
+            module = "numpy.core.numeric"
+        if module == "numpy._core.multiarray":
+            module = "numpy.core.multiarray"
+        return super().find_class(module, name)
+
+
+def load_pickle_numpy_compat(path):
+    with open(path, "rb") as f:
+        return NumpyCompatUnpickler(f).load()
+
+
 def load_GMR_src_file(src_file):
     """Load from GMR source file"""
-    with open(src_file, "rb") as f:
-        motion_data = pkl.load(f)
+    # with open(src_file, "rb") as f:
+    #     motion_data = pkl.load(f)
+    motion_data = load_pickle_numpy_compat(src_file)
     joint_names = [
         "left_hip_pitch_joint",
         "left_hip_roll_joint",
