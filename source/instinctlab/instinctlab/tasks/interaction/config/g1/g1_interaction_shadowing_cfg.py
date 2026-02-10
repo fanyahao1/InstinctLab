@@ -48,17 +48,17 @@ from instinctlab.utils.humanoid_ik import HumanoidSmplRotationalIK
 combine_method = "prod"
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
 
-MOTION_NAME = "InteractionMotion"
+MOTION_FOLDER = "PATH/TO/INTERACTION/MOTION/DATA"
 
 
 @configclass
 class InteractionMotionCfg(ObjectMotionCfgBase):
-    path = os.path.expanduser("PATH/TO/INTERACTION/MOTION/DATA")
-    object_data_keys = (
-        {
-            "box": "box",
-        },
-    )
+    path = MOTION_FOLDER
+    metadata_yaml = os.path.join(MOTION_FOLDER, "metadata.yaml")
+    object_matching_key = "usd_path"
+    object_data_keys = {
+        "box": "box",
+    }
     object_velocity_estimation_method = "frontbackward"
 
     filtered_motion_selection_filepath = None
@@ -102,7 +102,7 @@ motion_reference_cfg = MotionReferenceManagerCfg(
     visualizing_robot_offset=(0.0, 1.5, 0.0),
     visualizing_robot_from="reference_frame",
     motion_buffers={
-        MOTION_NAME: InteractionMotionCfg(),
+        "InteractionMotion": InteractionMotionCfg(),
     },
     mp_split_method="Even",
 )
@@ -111,8 +111,9 @@ DUNMMY_OBJECT_CFG = RigidObjectCfg(
     prim_path="{ENV_REGEX_NS}/Object",
     spawn=sim_utils.MultiUsdFileCfg(
         usd_path=[
-            "PATH/TO/YOUR/OBJECT/FILE1",
-            "PATH/TO/YOUR/OBJECT/FILE2",
+            "PATH/TO/small_box_30cm.usd",
+            "PATH/TO/medium_box_50cm.usd",
+            "PATH/TO/large_box_80cm.usd",
         ],
         random_choice=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(

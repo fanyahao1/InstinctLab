@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import torch
+import yaml
 from typing import TYPE_CHECKING, Sequence
 
 from instinctlab.motion_reference import MotionReferenceData, MotionSequence
@@ -8,6 +10,8 @@ from instinctlab.motion_reference.motion_files.amass_motion import AmassMotion
 from instinctlab.motion_reference.utils import estimate_angular_velocity, estimate_velocity
 
 if TYPE_CHECKING:
+    from isaaclab.scene import InteractiveScene
+
     from .object_motion_cfg import ObjectMotionCfg
 
 
@@ -28,6 +32,174 @@ class ObjectMotion(AmassMotion):
         **kwargs,
     ):
         super().__init__(cfg, *args, **kwargs)
+
+    def enable_trajectories(self, traj_ids: torch.Tensor | slice | None = None) -> None:
+        if not traj_ids is None and hasattr(self, "_all_motion_object_ids"):
+            self._all_motion_object_ids = self._all_motion_object_ids[traj_ids]
+            self._all_motion_selectable_envs_mask = self._all_motion_selectable_envs_mask[traj_ids]
+        super().enable_trajectories(traj_ids)
+
+    def _refresh_motion_file_list(self):
+        """Refresh the list of motion files based on the object configuration."""
+        if self.cfg.metadata_yaml is None:
+            super()._refresh_motion_file_list()
+            return
+
+        with open(self.cfg.metadata_yaml) as file:
+            self.yaml_data = yaml.safe_load(file)
+
+        self._all_motion_files = [os.path.join(self.cfg.path, f["motion_file"]) for f in self.yaml_data["motion_files"]]
+        self._motion_weights = torch.tensor(
+            [float(f.get("weight", 1.0)) for f in self.yaml_data["motion_files"]],
+            dtype=torch.float,
+            device=self.buffer_device,
+        )
+
+        self._all_motion_object_ids = torch.tensor(
+            [int(f["object_id"]) for f in self.yaml_data["motion_files"]],
+            dtype=torch.int,
+            device=self.buffer_device,
+        )
+
+        self._all_motion_selectable_envs_mask = torch.ones(
+            len(self._all_motion_files), self.num_assigned_envs, dtype=torch.bool, device=self.buffer_device
+        )
+
+    def match_scene(self, scene: InteractiveScene) -> None:
+        """Match motion files with scene objects based on object_matching_key.
+
+        This method:
+        1. Reads object configurations from the scene
+        2. Extracts the matching property (e.g., usd_path) for each environment's object
+        3. Builds a mapping from object_id to env_ids
+        4. Updates _all_motion_selectable_envs_mask to ensure each motion is only
+           assigned to environments with matching objects
+        """
+        if self.cfg.metadata_yaml is None:
+            print("[ObjectMotion] No metadata_yaml provided, skipping scene matching.")
+            return
+
+        if not hasattr(self, "yaml_data"):
+            with open(self.cfg.metadata_yaml) as file:
+                self.yaml_data = yaml.safe_load(file)
+
+        objects_asset = scene.get("objects", None)
+        if objects_asset is None:
+            print("[ObjectMotion] Warning: No 'objects' found in scene. Skipping scene matching.")
+            return
+
+        object_id_to_matching_value = {
+            obj["object_id"]: obj[self.cfg.object_matching_key] for obj in self.yaml_data["objects"]
+        }
+
+        env_object_properties = self._extract_object_properties_from_scene(objects_asset)
+
+        object_id_to_env_ids = {obj["object_id"]: [] for obj in self.yaml_data["objects"]}
+
+        for env_id, obj_property in enumerate(env_object_properties):
+            for object_id, matching_value in object_id_to_matching_value.items():
+                if self._match_object_property(obj_property, matching_value):
+                    object_id_to_env_ids[object_id].append(env_id)
+                    break
+
+        self._all_motion_selectable_envs_mask.fill_(False)
+
+        for object_id, env_ids in object_id_to_env_ids.items():
+            num_envs_matched = len(env_ids)
+            num_motions_matched = (self._all_motion_object_ids == object_id).sum().item()
+
+            if num_envs_matched == 0:
+                print(f"[ObjectMotion] Warning: Object {object_id} has no matching envs. Motions will be disabled.")
+                continue
+
+            if num_motions_matched == 0:
+                print(f"[ObjectMotion] Warning: Object {object_id} has no matching motions.")
+                continue
+
+            print(
+                f"[ObjectMotion] Matched object_id {object_id} ({object_id_to_matching_value[object_id]}): "
+                f"{num_motions_matched} motions -> {num_envs_matched} envs"
+            )
+
+            assigned_env_ids = self.env_ids_to_assigned_ids(torch.tensor(env_ids, device=self.buffer_device)).to(
+                self.buffer_device
+            )
+            self._all_motion_selectable_envs_mask[self._all_motion_object_ids == object_id, assigned_env_ids] = True
+
+    def _extract_object_properties_from_scene(self, objects_asset) -> list[str]:
+        """Extract object properties from scene for matching.
+
+        Returns a list where each element is the matching property value for that environment.
+        """
+        num_envs = objects_asset.num_instances
+
+        if self.cfg.object_matching_key == "usd_path":
+            if hasattr(objects_asset.cfg.spawn, "usd_path"):
+                if isinstance(objects_asset.cfg.spawn.usd_path, list):
+                    print(
+                        "[ObjectMotion] Error: Multiple USD paths found. "
+                        "Cannot automatically determine per-env mapping. "
+                        "Consider using RigidObjectCollectionCfg or custom matching logic."
+                    )
+                    return [""] * num_envs
+                else:
+                    return [os.path.basename(objects_asset.cfg.spawn.usd_path)] * num_envs
+            else:
+                print(f"[ObjectMotion] Warning: object_matching_key='{self.cfg.object_matching_key}' not found.")
+                return [""] * num_envs
+        else:
+            print(
+                f"[ObjectMotion] Custom matching key '{self.cfg.object_matching_key}' requires "
+                "custom implementation of _extract_object_properties_from_scene."
+            )
+            return [""] * num_envs
+
+    def _match_object_property(self, env_property: str, target_value: str) -> bool:
+        """Check if an environment's object property matches the target value."""
+        if self.cfg.object_matching_key == "usd_path":
+            return os.path.basename(env_property) == os.path.basename(target_value)
+        else:
+            return env_property == target_value
+
+    def _sample_assigned_env_starting_stub(self, env_ids: Sequence[int] | torch.Tensor | None = None) -> None:
+        """Sample motion starting points, ensuring object matching constraints."""
+        if hasattr(self, "_all_motion_selectable_envs_mask"):
+            self._safe_motion_resampling_for_objects(env_ids)
+
+        super()._sample_assigned_env_starting_stub(env_ids)
+
+    def _safe_motion_resampling_for_objects(self, env_ids: Sequence[int] | torch.Tensor | None = None) -> None:
+        """Ensure sampled motions are compatible with the environment's object."""
+        if env_ids is None:
+            env_ids = torch.arange(self.num_assigned_envs, device=self.buffer_device)
+        else:
+            env_ids = torch.as_tensor(env_ids, device=self.buffer_device)
+
+        assigned_ids = self.env_ids_to_assigned_ids(env_ids).to(self.buffer_device)
+
+        motion_ids = self._assigned_env_motion_selection[assigned_ids]
+
+        invalid_mask = ~self._all_motion_selectable_envs_mask[motion_ids, assigned_ids]
+
+        if invalid_mask.any():
+            invalid_assigned_ids = assigned_ids[invalid_mask]
+
+            valid_motion_mask_per_env = self._all_motion_selectable_envs_mask[:, invalid_assigned_ids]
+
+            for i, assigned_id in enumerate(invalid_assigned_ids):
+                valid_motions = torch.where(valid_motion_mask_per_env[:, i])[0]
+
+                if len(valid_motions) == 0:
+                    print(
+                        f"[ObjectMotion] Error: No valid motions for env {assigned_id.item()}. "
+                        "Check object matching configuration."
+                    )
+                    continue
+
+                valid_weights = self._motion_weights[valid_motions]
+                resampled_motion_id = valid_motions[torch.multinomial(valid_weights, 1, replacement=True).item()].item()
+
+                self._assigned_env_motion_selection[assigned_id] = resampled_motion_id
 
     def _read_amass_motion_file(self, filepath: str) -> MotionSequence:
         """Read AMASS motion file and extract both human and object motion data."""

@@ -63,6 +63,7 @@ def reset_robot_state_by_reference(
     env_ids: torch.Tensor,
     motion_ref_cfg: SceneEntityCfg = SceneEntityCfg("motion_reference"),
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    object_name: str | None = None,
     position_offset: list = [0.0, 0.0, 0.1],
     dof_vel_ratio: float = 0.5,
     base_lin_vel_ratio: float = 0.5,
@@ -71,24 +72,147 @@ def reset_robot_state_by_reference(
     randomize_velocity_range: dict[str, tuple[float, float]] = {},
     randomize_joint_pos_range: tuple[float, float] = (0.0, 0.0),
 ):
-    """Reset robot state based on motion reference with optional randomization.
+    """Reset robot or object state based on motion reference with optional randomization.
+
+    This function supports both Articulation (robots) and RigidObject (objects) assets.
+    For robots, it uses motion_ref_init_state from the motion reference.
+    For objects, it reads from motion_ref.data.object_data[object_name].
 
     Args:
         env: The environment instance.
         env_ids: Environment IDs to reset.
         motion_ref_cfg: Motion reference configuration.
-        asset_cfg: Robot asset configuration.
+        asset_cfg: Asset configuration (robot or object).
+        object_name: Object name to read from object_data. Required if asset is RigidObject. **Must match the key in object_data_keys.**
         position_offset: Position offset to apply [x, y, z].
-        dof_vel_ratio: Ratio to scale joint velocities.
-        base_lin_vel_ratio: Ratio to scale base linear velocities.
-        base_ang_vel_ratio: Ratio to scale base angular velocities.
+        dof_vel_ratio: Ratio to scale joint velocities (robot only).
+        base_lin_vel_ratio: Ratio to scale base/object linear velocities.
+        base_ang_vel_ratio: Ratio to scale base/object angular velocities.
         randomize_pose_range: Optional pose randomization ranges for ["x", "y", "z", "roll", "pitch", "yaw"].
         randomize_velocity_range: Optional velocity randomization ranges for ["x", "y", "z", "roll", "pitch", "yaw"].
-        randomize_joint_pos_range: Optional joint position randomization range (min, max).
+        randomize_joint_pos_range: Optional joint position randomization range (min, max) (robot only).
     """
     asset: RigidObject | Articulation = env.scene[asset_cfg.name]
     motion_ref: MotionReferenceManager = env.scene[motion_ref_cfg.name]
 
+    if isinstance(asset, RigidObject):
+        _reset_object_state_by_reference(
+            env,
+            env_ids,
+            asset,
+            motion_ref,
+            object_name,
+            position_offset,
+            base_lin_vel_ratio,
+            base_ang_vel_ratio,
+            randomize_pose_range,
+            randomize_velocity_range,
+        )
+    elif isinstance(asset, Articulation):
+        _reset_articulation_state_by_reference(
+            env,
+            env_ids,
+            asset,
+            motion_ref,
+            position_offset,
+            dof_vel_ratio,
+            base_lin_vel_ratio,
+            base_ang_vel_ratio,
+            randomize_pose_range,
+            randomize_velocity_range,
+            randomize_joint_pos_range,
+        )
+    else:
+        raise ValueError(f"Unsupported asset type: {type(asset)}")
+
+
+def _reset_object_state_by_reference(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    asset: RigidObject,
+    motion_ref: MotionReferenceManager,
+    object_name: str | None,
+    position_offset: list,
+    lin_vel_ratio: float,
+    ang_vel_ratio: float,
+    randomize_pose_range: dict[str, tuple[float, float]],
+    randomize_velocity_range: dict[str, tuple[float, float]],
+):
+    """Reset object state based on object_data in motion reference."""
+
+    if object_name is None:
+        raise ValueError("object_name must be provided when resetting RigidObject")
+
+    data: MotionReferenceData = motion_ref.data
+
+    if not hasattr(data, "object_data") or object_name not in data.object_data:
+        raise ValueError(
+            f"Object '{object_name}' not found in motion reference data. "
+            f"Available objects: {list(data.object_data.keys()) if hasattr(data, 'object_data') else []}"
+        )
+
+    object_data = data.object_data[object_name]
+
+    if "pos" not in object_data:
+        raise ValueError(f"Object '{object_name}' does not have position data")
+
+    object_pos = object_data["pos"][env_ids, 0, :].clone()
+    object_pos += torch.tensor(position_offset, device=object_pos.device).unsqueeze(0)
+
+    if "quat" in object_data and object_data["quat"] is not None:
+        object_quat = object_data["quat"][env_ids, 0, :].clone()
+    else:
+        object_quat = torch.tensor([1.0, 0.0, 0.0, 0.0], device=object_pos.device).repeat(len(env_ids), 1)
+
+    if randomize_pose_range:
+        range_list = [randomize_pose_range.get(key, (0.0, 0.0)) for key in ["x", "y", "z", "roll", "pitch", "yaw"]]
+        ranges = torch.tensor(range_list, device=object_pos.device)
+        rand_samples = math_utils.sample_uniform(
+            ranges[:, 0], ranges[:, 1], (len(env_ids), 6), device=object_pos.device
+        )
+
+        object_pos += rand_samples[:, 0:3]
+
+        orientations_delta = math_utils.quat_from_euler_xyz(rand_samples[:, 3], rand_samples[:, 4], rand_samples[:, 5])
+        object_quat = math_utils.quat_mul(orientations_delta, object_quat)
+
+    asset.write_root_pose_to_sim(torch.cat([object_pos, object_quat], dim=-1), env_ids=env_ids)
+
+    if "lin_vel" in object_data and object_data["lin_vel"] is not None:
+        object_lin_vel = object_data["lin_vel"][env_ids, 0, :].clone() * lin_vel_ratio
+    else:
+        object_lin_vel = torch.zeros(len(env_ids), 3, device=object_pos.device)
+
+    if "ang_vel" in object_data and object_data["ang_vel"] is not None:
+        object_ang_vel = object_data["ang_vel"][env_ids, 0, :].clone() * ang_vel_ratio
+    else:
+        object_ang_vel = torch.zeros(len(env_ids), 3, device=object_pos.device)
+
+    if randomize_velocity_range:
+        range_list = [randomize_velocity_range.get(key, (0.0, 0.0)) for key in ["x", "y", "z", "roll", "pitch", "yaw"]]
+        ranges = torch.tensor(range_list, device=object_pos.device)
+        vel_samples = math_utils.sample_uniform(ranges[:, 0], ranges[:, 1], (len(env_ids), 6), device=object_pos.device)
+
+        object_lin_vel += vel_samples[:, 0:3]
+        object_ang_vel += vel_samples[:, 3:6]
+
+    asset.write_root_velocity_to_sim(torch.cat([object_lin_vel, object_ang_vel], dim=-1), env_ids=env_ids)
+
+
+def _reset_articulation_state_by_reference(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    asset: Articulation,
+    motion_ref: MotionReferenceManager,
+    position_offset: list,
+    dof_vel_ratio: float,
+    base_lin_vel_ratio: float,
+    base_ang_vel_ratio: float,
+    randomize_pose_range: dict[str, tuple[float, float]],
+    randomize_velocity_range: dict[str, tuple[float, float]],
+    randomize_joint_pos_range: tuple[float, float],
+):
+    """Reset articulation (robot) state based on motion reference."""
     # reset the motion reference object
     # motion reference (as sensor) is already reset(ed) in scene.reset(...)
     # motion_ref.reset(env_ids)

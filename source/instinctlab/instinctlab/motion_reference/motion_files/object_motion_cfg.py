@@ -54,3 +54,40 @@ class ObjectMotionCfg(AmassMotionCfg):
     - "frontbackward": use both frontward and backward difference to estimate the velocity.
     - None: do not estimate velocity (assumes velocity is provided in the data).
     """
+
+    metadata_yaml: str | None = None
+    """Path to the metadata YAML file that describes motion-object bindings.
+
+    The YAML file should contain:
+    - motion_files: list of motion files with their object_id
+    - objects: list of object configurations with object_id and matching properties
+
+    Example:
+        motion_files:
+        - motion_file: small_box_lift.npz
+          object_id: 0
+        - motion_file: large_box_push.npz
+          object_id: 1
+        objects:
+        - object_id: 0
+          size: small
+          usd_path: small_box.usd
+        - object_id: 1
+          size: large
+          usd_path: large_box.usd
+    """
+
+    # TODO: only support usd_path matching for now
+    object_matching_key: str = "usd_path"
+    """The property key used to match objects in the scene with object definitions in metadata.
+
+    Common options:
+    - "usd_path": Match by USD file path (default, most reliable)
+    - "size": Match by object size category (small/medium/large)
+    - "type": Match by object type (box/sphere/cylinder)
+    - "name": Match by object name
+
+    The matching key should exist in both:
+    1. The metadata YAML's object definitions
+    2. The scene's object spawn configuration or properties
+    """

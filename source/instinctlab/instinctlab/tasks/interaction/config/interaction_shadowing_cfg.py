@@ -422,6 +422,29 @@ class EventCfg:
             "randomize_joint_pos_range": (-0.1, 0.1),
         },
     )
+    reset_objects = EventTermCfg(
+        func=instinct_mdp.reset_robot_state_by_reference,
+        mode="reset",
+        params={
+            "motion_ref_cfg": SceneEntityCfg("motion_reference"),
+            "asset_cfg": SceneEntityCfg("objects"),
+            "object_name": "box",
+            "position_offset": [0.0, 0.0, 0.0],
+            "base_lin_vel_ratio": 0.0,
+            "base_ang_vel_ratio": 0.0,
+            # Object pose randomization (smaller range for objects)
+            "randomize_pose_range": {
+                "x": (-0.02, 0.02),
+                "y": (-0.02, 0.02),
+                "z": (-0.01, 0.01),
+                "roll": (-0.05, 0.05),
+                "pitch": (-0.05, 0.05),
+                "yaw": (-0.1, 0.1),
+            },
+            # Object starts with zero velocity
+            "randomize_velocity_range": {},
+        },
+    )
     bin_fail_counter_smoothing = EventTermCfg(
         func=instinct_mdp.beyondmimic_bin_fail_counter_smoothing,
         mode="interval",
