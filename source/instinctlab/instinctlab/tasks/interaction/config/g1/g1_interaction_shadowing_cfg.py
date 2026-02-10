@@ -190,7 +190,6 @@ class G1InteractionShadowingEnvCfg(interaction_cfg.InteractionShadowingEnvCfg):
         self.run_name: str = "".join(
             [
                 "G1InteractionShadowing",
-                f"_{MOTION_NAME}",
                 (
                     "_odomObs"
                     if ("base_lin_vel" in self.observations.policy.__dict__.keys())
