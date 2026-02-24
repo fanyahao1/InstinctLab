@@ -43,7 +43,6 @@ from instinctlab.motion_reference import MotionReferenceManagerCfg
 from instinctlab.motion_reference.motion_files.amass_motion_cfg import AmassMotionCfg as AmassMotionCfgBase
 from instinctlab.motion_reference.motion_files.object_motion_cfg import ObjectMotionCfg as ObjectMotionCfgBase
 from instinctlab.motion_reference.utils import motion_interpolate_bilinear
-from instinctlab.utils.humanoid_ik import HumanoidSmplRotationalIK
 
 combine_method = "prod"
 G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
@@ -111,9 +110,10 @@ DUNMMY_OBJECT_CFG = RigidObjectCfg(
     prim_path="{ENV_REGEX_NS}/Object",
     spawn=sim_utils.MultiUsdFileCfg(
         usd_path=[
-            "PATH/TO/small_box_30cm.usd",
-            "PATH/TO/medium_box_50cm.usd",
-            "PATH/TO/large_box_80cm.usd",
+            os.path.join(MOTION_FOLDER, "tiny_box_10cm.usd"),
+            os.path.join(MOTION_FOLDER, "small_box_30cm.usd"),
+            os.path.join(MOTION_FOLDER, "medium_box_50cm.usd"),
+            os.path.join(MOTION_FOLDER, "large_box_80cm.usd"),
         ],
         random_choice=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
@@ -125,9 +125,6 @@ DUNMMY_OBJECT_CFG = RigidObjectCfg(
             max_angular_velocity=1000.0,
             max_depenetration_velocity=1.0,
         ),
-        articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-            enabled_self_collisions=True, solver_position_iteration_count=4, solver_velocity_iteration_count=0
-        ),
         activate_contact_sensors=True,
     ),
     init_state=RigidObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 2.0)),
@@ -137,6 +134,7 @@ DUNMMY_OBJECT_CFG = RigidObjectCfg(
 @configclass
 class G1InteractionShadowingEnvCfg(interaction_cfg.InteractionShadowingEnvCfg):
     scene: interaction_cfg.InteractionShadowingSceneCfg = interaction_cfg.InteractionShadowingSceneCfg(
+        replicate_physics=False,
         num_envs=4096,
         robot=G1_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot"),
         motion_reference=motion_reference_cfg,
@@ -228,11 +226,13 @@ class G1InteractionShadowingEnvCfg(interaction_cfg.InteractionShadowingEnvCfg):
 @configclass
 class G1InteractionShadowingEnvCfg_PLAY(G1InteractionShadowingEnvCfg):
     scene: interaction_cfg.InteractionShadowingSceneCfg = interaction_cfg.InteractionShadowingSceneCfg(
+        replicate_physics=False,
         num_envs=1,
         env_spacing=2.5,
         robot=G1_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot"),
         robot_reference=G1_CFG.replace(prim_path="{ENV_REGEX_NS}/RobotReference"),
         motion_reference=motion_reference_cfg.replace(debug_vis=True),
+        objects=DUNMMY_OBJECT_CFG,
     )
     viewer: ViewerCfg = ViewerCfg(
         eye=[4.0, 0.75, 1.0],

@@ -109,12 +109,17 @@ class BeyondMimicAdaptiveWeighting(ManagerTermBase):
         sampling_top1_probs = []
         sampling_top1_bins = []
         for motion_idx in range(min(self.motion_bin_nums.shape[0], 4)):
+            num_bins = self.motion_bin_nums[motion_idx].item()
+            # Skip metrics computation if num_bins is 0 or 1 (not enough bins for meaningful stats)
+            if num_bins <= 1:
+                sampling_entropy.append(0.0)
+                sampling_top1_probs.append(1.0)
+                sampling_top1_bins.append(0.0)
+                continue
             w = self.motion_buffer._motion_bin_weights[motion_idx]
-            sampling_entropy.append(
-                -torch.sum(w * torch.log(w + 1e-12)).item() / self.motion_bin_nums[motion_idx].log().item()
-            )
+            sampling_entropy.append(-torch.sum(w * torch.log(w + 1e-12)).item() / num_bins)
             sampling_top1_probs.append(w.max().item())
-            sampling_top1_bins.append(w.argmax().item() / self.motion_bin_nums[motion_idx].item())
+            sampling_top1_bins.append(w.argmax().item() / num_bins)
 
         return_ = {}
         for i, motion_idx in enumerate(range(min(self.motion_bin_nums.shape[0], 4))):
@@ -216,6 +221,13 @@ class BeyondConcatMotionAdaptiveWeighting(BeyondMimicAdaptiveWeighting):
         # compute the sampling stats, as if they are from a single motion file
         w = self.motion_buffer._motion_bin_weights._concatenated_tensor
         N = self.motion_bin_nums.sum()
+        # Guard against zero bins
+        if N.item() <= 1:
+            return {
+                "sampling_entropy": 0.0,
+                "sampling_top1_prob": 1.0,
+                "sampling_top1_bin": 0.0,
+            }
         assert N == w.shape[0], "N should be the same as the number of bins"
         sampling_entropy = -torch.sum(w * torch.log(w + 1e-12)).item() / N.log().item()
         sampling_top1_probs = w.max().item()

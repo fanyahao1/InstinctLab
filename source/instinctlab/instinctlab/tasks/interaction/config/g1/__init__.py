@@ -9,7 +9,7 @@ gym.register(
     entry_point="instinctlab.envs:InstinctRlEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{task_entry}.g1_interaction_shadowing_cfg:G1ShadowingInteractionEnvCfg",
+        "env_cfg_entry_point": f"{task_entry}.g1_interaction_shadowing_cfg:G1InteractionShadowingEnvCfg",
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:G1InteractionShadowingPPORunnerCfg",
         "instinct_rl_cfg_entry_point": f"{agents.__name__}.instinct_rl_ppo_cfg:G1InteractionShadowingPPORunnerCfg",
     },
@@ -20,7 +20,7 @@ gym.register(
     entry_point="instinctlab.envs:InstinctRlEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{task_entry}.g1_interaction_shadowing_cfg:G1ShadowingInteractionEnvCfg_PLAY",
+        "env_cfg_entry_point": f"{task_entry}.g1_interaction_shadowing_cfg:G1InteractionShadowingEnvCfg_PLAY",
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:G1InteractionShadowingPPORunnerCfg",
         "instinct_rl_cfg_entry_point": f"{agents.__name__}.instinct_rl_ppo_cfg:G1InteractionShadowingPPORunnerCfg",
     },
