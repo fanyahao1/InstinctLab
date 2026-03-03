@@ -13,9 +13,8 @@ from instinctlab.assets.unitree_g1 import (
     beyondmimic_g1_29dof_delayed_actuators,
 )
 from instinctlab.motion_reference import MotionReferenceManagerCfg
-from instinctlab.motion_reference.motion_files.amass_motion_cfg import AmassMotionCfg as AmassMotionCfgBase
-from instinctlab.motion_reference.utils import motion_interpolate_bilinear
 from instinctlab.tasks.parkour.config.parkour_env_cfg import ROUGH_TERRAINS_CFG, ParkourEnvCfg
+from .motion_cfg import *
 
 __file_dir__ = os.path.dirname(os.path.realpath(__file__))
 G1_CFG = copy.deepcopy(G1_29DOF_TORSOBASE_POPSICLE_CFG)
@@ -25,20 +24,6 @@ G1_with_shoe_CFG = copy.deepcopy(G1_CFG)
 G1_with_shoe_CFG.spawn.asset_path = os.path.abspath(
     f"{__file_dir__}/../../urdf/g1_29dof_torsoBase_popsicle_with_shoe.urdf"
 )
-
-
-@configclass
-class AmassMotionCfg(AmassMotionCfgBase):
-    path = os.path.expanduser("~/Datasets")
-    retargetting_func = None
-    filtered_motion_selection_filepath = os.path.expanduser("~/Datasets/parkour_motion_without_run.yaml")
-    motion_start_from_middle_range = [0.0, 0.9]
-    motion_start_height_offset = 0.0
-    ensure_link_below_zero_ground = False
-    buffer_device = "output_device"
-    motion_interpolate_func = motion_interpolate_bilinear
-    velocity_estimation_method = "frontward"
-
 
 motion_reference_cfg = MotionReferenceManagerCfg(
     prim_path="{ENV_REGEX_NS}/Robot/torso_link",
@@ -51,7 +36,10 @@ motion_reference_cfg = MotionReferenceManagerCfg(
     update_period=0.02,
     num_frames=10,
     motion_buffers={
-        "run_walk": AmassMotionCfg(),
+        "run_walk": ParkourMotionCfg(),
+        # "amass": AmassMotionCfg(),
+        # "lafan1": Lafan1MotionCfg(),
+        # "lafan1_50": Lafan1_50MotionCfg(),
     },
     link_of_interests=[
         "pelvis",
@@ -88,6 +76,12 @@ class G1ParkourRoughEnvCfg(ParkourEnvCfg):
         self.scene.robot = G1_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.robot.actuators = beyondmimic_g1_29dof_delayed_actuators
         self.scene.motion_reference = motion_reference_cfg
+        self.viewer = ViewerCfg(
+            eye=[4.0, 0.75, 1.0],
+            lookat=[0.0, 0.75, 0.0],
+            origin_type="asset_root",
+            asset_name="robot",
+        )
 
 
 class ShoeConfigMixin:
