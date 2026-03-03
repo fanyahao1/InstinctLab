@@ -76,11 +76,81 @@ def load_GMR_src_file(src_file):
     }
 
 
+def _lerp(a: torch.Tensor, b: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+    """Linear interpolation: a and b are (D,), t is scalar."""
+    return a + t * (b - a)
+
+
+def _slerp_quat(q0: torch.Tensor, q1: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+    """Spherical linear interpolation between two quaternions in wxyz order.
+
+    Args:
+        q0: (4,) source quaternion.
+        q1: (4,) target quaternion.
+        t: scalar blend factor in [0, 1].
+    Returns:
+        (4,) interpolated quaternion.
+    """
+    dot = (q0 * q1).sum().clamp(-1.0, 1.0)
+    if dot < 0.0:
+        q1 = -q1
+        dot = -dot
+    if dot > 0.9995:
+        result = q0 + t * (q1 - q0)
+        return result / result.norm()
+    theta_0 = torch.acos(dot)
+    theta = theta_0 * t
+    sin_theta_0 = torch.sin(theta_0)
+    s0 = torch.cos(theta) - dot * torch.sin(theta) / sin_theta_0
+    s1 = torch.sin(theta) / sin_theta_0
+    return s0 * q0 + s1 * q1
+
+
+def interpolate_se3(
+    base_pos: torch.Tensor,
+    base_quat: torch.Tensor,
+    joint_pos: torch.Tensor,
+    input_fps: float,
+    output_fps: float,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Resample SE3 motion data from input_fps to output_fps using lerp/slerp.
+
+    Args:
+        base_pos: (N, 3) root positions.
+        base_quat: (N, 4) root quaternions in wxyz order.
+        joint_pos: (N, D) joint positions.
+        input_fps: framerate of input data.
+        output_fps: desired output framerate.
+    Returns:
+        Tuple of resampled (base_pos, base_quat, joint_pos).
+    """
+    n_frames = base_pos.shape[0]
+    duration = (n_frames - 1) / input_fps
+    times = torch.arange(0, duration, 1.0 / output_fps, dtype=torch.float32)
+    n_out = times.shape[0]
+
+    out_pos = torch.zeros(n_out, base_pos.shape[1], dtype=base_pos.dtype)
+    out_quat = torch.zeros(n_out, 4, dtype=base_quat.dtype)
+    out_jpos = torch.zeros(n_out, joint_pos.shape[1], dtype=joint_pos.dtype)
+
+    for i, t in enumerate(times):
+        idx_f = t.item() * input_fps
+        idx_0 = min(int(idx_f), n_frames - 2)
+        idx_1 = idx_0 + 1
+        blend = torch.tensor(idx_f - idx_0, dtype=torch.float32)
+        out_pos[i] = _lerp(base_pos[idx_0], base_pos[idx_1], blend)
+        out_quat[i] = _slerp_quat(base_quat[idx_0], base_quat[idx_1], blend)
+        out_jpos[i] = _lerp(joint_pos[idx_0], joint_pos[idx_1], blend)
+
+    return out_pos, out_quat, out_jpos
+
+
 def convert_file(
     src_tgt_pairs,
     urdf: str,
     src_frame_name: str,
     tgt_frame_name: str,
+    output_fps: int | None = None,
     joints_to_revert: list = ["waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint"],
 ):
     src_file, tgt_file = src_tgt_pairs
@@ -121,14 +191,22 @@ def convert_file(
     tgt_base_quat_w = pk.matrix_to_quaternion(tgt_base_matrix[:, :3, :3])
     tgt_base_pos_w = tgt_base_matrix[:, :3, 3]
 
+    input_fps = float(src_npz["framerate"])
+    actual_output_fps = float(output_fps) if output_fps is not None else input_fps
+
+    if actual_output_fps != input_fps:
+        tgt_base_pos_w, tgt_base_quat_w, joint_pos = interpolate_se3(
+            tgt_base_pos_w, tgt_base_quat_w, joint_pos, input_fps, actual_output_fps
+        )
+
     # pack the file and store
     np.savez(
         tgt_file,
-        framerate=src_npz["framerate"],
+        framerate=actual_output_fps,
         joint_names=joint_names,
         joint_pos=joint_pos.numpy(),
-        base_pos_w=tgt_base_pos_w,
-        base_quat_w=tgt_base_quat_w,
+        base_pos_w=tgt_base_pos_w.detach().numpy() if isinstance(tgt_base_pos_w, torch.Tensor) else tgt_base_pos_w,
+        base_quat_w=tgt_base_quat_w.detach().numpy() if isinstance(tgt_base_quat_w, torch.Tensor) else tgt_base_quat_w,
     )
 
 
@@ -141,6 +219,12 @@ def main():
     )
     parser.add_argument("--src_frame", type=str, default="pelvis")
     parser.add_argument("--tgt_frame", type=str, default="torso_link")
+    parser.add_argument(
+        "--output_fps",
+        type=int,
+        default=None,
+        help="Output framerate. Defaults to the source file's framerate. SE3 interpolation is applied when resampling.",
+    )
     parser.add_argument("--num_cpus", default=10)
 
     args = parser.parse_args()
@@ -174,6 +258,7 @@ def main():
                         urdf=args.urdf,
                         src_frame_name=args.src_frame,
                         tgt_frame_name=args.tgt_frame,
+                        output_fps=args.output_fps,
                     ),
                     src_tgt_pairs,
                 ),
