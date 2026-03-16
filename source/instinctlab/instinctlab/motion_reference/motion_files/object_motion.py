@@ -107,38 +107,6 @@ class ObjectMotion(AmassMotion):
                         tensor_list, self.buffer_device
                     )
 
-    # def _create_concat_batch_tensor(self, tensor_list: list[torch.Tensor | None], device):
-    #     """Create a padded tensor of shape [num_motions, max_object_frames, data_dim].
-
-    #     Each entry in tensor_list corresponds to one motion (None if that motion has no
-    #     object data for this key).  Uses the actual object-tensor length per motion rather
-    #     than the human-motion buffer length, so mismatched frame counts are handled safely.
-    #     """
-    #     # Collect non-None entries to determine data_dim and max frame count.
-    #     non_none = [(i, t) for i, t in enumerate(tensor_list) if t is not None]
-    #     if not non_none:
-    #         return torch.zeros(len(tensor_list), 0, 1, device=device)
-
-    #     sample = non_none[0][1]
-    #     data_dim = sample.shape[-1] if sample.ndim > 1 else 1
-
-    #     actual_lengths = [t.shape[0] if t is not None else 0 for t in tensor_list]
-    #     max_len = max(actual_lengths) if actual_lengths else 0
-
-    #     num_motions = len(tensor_list)
-    #     result = torch.zeros(num_motions, max_len, data_dim, device=device)
-
-    #     for i, tensor in enumerate(tensor_list):
-    #         if tensor is None:
-    #             continue
-    #         n_frames = tensor.shape[0]
-    #         if tensor.ndim == 1:
-    #             result[i, :n_frames] = tensor.unsqueeze(-1)
-    #         else:
-    #             result[i, :n_frames] = tensor
-
-    #     return result
-
     def _create_concat_batch_tensor(self, tensor_list: list[torch.Tensor | None], device):
         """Create a padded tensor of shape [num_motions, max_object_frames, data_dim].
 
@@ -170,7 +138,7 @@ class ObjectMotion(AmassMotion):
 
     def set_env_ids_assignments(self, env_ids: slice) -> None:
         """Set the environment IDs assignments for the motion buffer.
-        Also initializes the selectable envs mask after the slice is set.
+        Also initializes the selectable envs mask and env-object fixed mapping after the slice is set.
         """
         super().set_env_ids_assignments(env_ids)
 
@@ -179,11 +147,74 @@ class ObjectMotion(AmassMotion):
             self._all_motion_selectable_envs_mask = torch.ones(
                 len(self._all_motion_files), self.num_assigned_envs, dtype=torch.bool, device=self.buffer_device
             )
+            # DEBUG: Print mask initialization
+            print(f"[ObjectMotion] ===== SET_ENV_IDS_ASSIGNMENTS =====")
+            print(f"[ObjectMotion] assigned_env_slice: {self.assigned_env_slice}")
+            print(f"[ObjectMotion] num_assigned_envs: {self.num_assigned_envs}")
+            print(
+                f"[ObjectMotion] _all_motion_selectable_envs_mask shape: {self._all_motion_selectable_envs_mask.shape}"
+            )
             # If match_scene was called before the mask existed, process it now.
             if hasattr(self, "_pending_match_scene"):
                 pending_scene = self._pending_match_scene
                 del self._pending_match_scene
                 self.match_scene(pending_scene)
+
+            # Create env-object fixed mapping for efficient reset (no resample needed!)
+            # This will be called either here (if _env_usd_paths already exists from pending match_scene)
+            # or at the end of match_scene (when called as an event)
+            if hasattr(self, "_env_usd_paths") and hasattr(self, "_assigned_env_motion_selection"):
+                self._create_env_object_fixed_mapping()
+
+            print(f"[ObjectMotion] ===== SET_ENV_IDS_ASSIGNMENTS END =====")
+
+    def _create_env_object_fixed_mapping(self):
+        """Create env-object fixed mapping for efficient reset.
+
+        This method pre-computes:
+        1. _assigned_env_object_ids: tensor of object_id for each assigned_env
+        2. _assigned_env_motion_pools: dict {object_id: tensor of motion indices}
+
+        After this, reset will sample directly from the correct motion pool
+        without needing resample check.
+        """
+        if not hasattr(self, "_env_usd_paths"):
+            print("[ObjectMotion] WARNING: _env_usd_paths not available, skipping fixed mapping")
+            return
+
+        env_usd = self._env_usd_paths  # list of basename, e.g., ['chair.usd', 'sofa.usd', ...]
+
+        # Parse object_id from yaml: {'chair.usd': 0, 'sofa.usd': 1}
+        obj_id_map = {}
+        for obj in self.yaml_data.get("objects", []):
+            basename = os.path.basename(obj["usd_path"])  # 'chair.usd', 'sofa.usd'
+            obj_id_map[basename] = obj["object_id"]
+
+        # Create object_id for each assigned_env
+        env_object_ids = [obj_id_map.get(usd, 0) for usd in env_usd]
+        self._assigned_env_object_ids = torch.tensor(env_object_ids, dtype=torch.int, device=self.buffer_device)
+
+        # Create motion pools for each object_id
+        self._assigned_env_motion_pools = {}  # {object_id: tensor of motion indices}
+        unique_obj_ids = torch.unique(self._assigned_env_object_ids)
+        for obj_id in unique_obj_ids:
+            mask_for_obj = self._all_motion_object_ids == obj_id
+            self._assigned_env_motion_pools[int(obj_id)] = torch.where(mask_for_obj)[0]
+
+        # DEBUG: Print mapping info
+        print(f"[ObjectMotion] ===== ENV-OBJECT FIXED MAPPING CREATED =====")
+        print(f"  total assigned_envs: {len(env_usd)}")
+        print(f"  object_id distribution: {torch.bincount(self._assigned_env_object_ids).tolist()}")
+        for obj_id, pool in self._assigned_env_motion_pools.items():
+            print(f"  object_id={obj_id}: {len(pool)} motions (indices: {pool[:5].tolist()}...)")
+
+        # Verify: all selected motions should match env's object_id
+        if hasattr(self, "_assigned_env_motion_selection"):
+            selected_obj_ids = self._all_motion_object_ids[self._assigned_env_motion_selection]
+            mismatches = (selected_obj_ids != self._assigned_env_object_ids).sum().item()
+            print(f"  initial selection mismatches: {mismatches} / {len(self._assigned_env_object_ids)}")
+
+        print(f"[ObjectMotion] ===== FIXED MAPPING END =====")
 
     def _refresh_motion_file_list(self):
         """Refresh the list of motion files based on the object configuration."""
@@ -240,7 +271,23 @@ class ObjectMotion(AmassMotion):
         obj_id_to_val = {obj["object_id"]: obj[self.cfg.object_matching_key] for obj in self.yaml_data["objects"]}
         env_properties = self._extract_object_properties_from_scene(scene["objects"])
 
+        # DEBUG: Print matching info
+        print(f"[ObjectMotion] ========== MATCH_SCENE DEBUG ==========")
+        print(f"[ObjectMotion] object_matching_key: {self.cfg.object_matching_key}")
+        print(f"[ObjectMotion] yaml obj_id -> usd_path mapping: {obj_id_to_val}")
+        print(
+            f"[ObjectMotion] env_properties (per env USD path): {env_properties[:10]}... (total"
+            f" {len(env_properties)} envs)"
+        )
+
+        # Store env_properties for later use in reset debug
+        self._env_usd_paths = env_properties
+
         if not hasattr(self, "_all_motion_selectable_envs_mask"):
+            print(
+                "[ObjectMotion] WARNING: _all_motion_selectable_envs_mask not initialized yet! Saving pending"
+                " match_scene."
+            )
             self._pending_match_scene = scene
             return
 
@@ -248,12 +295,29 @@ class ObjectMotion(AmassMotion):
 
         for obj_id, target_val in obj_id_to_val.items():
             matched_envs = [i for i, prop in enumerate(env_properties) if self._match_object_property(prop, target_val)]
+            print(f"[ObjectMotion] object_id={obj_id} (target: {target_val}) -> matched_envs: {matched_envs[:20]}...")
             if not matched_envs or (self._all_motion_object_ids == obj_id).sum().item() == 0:
+                print(f"[ObjectMotion]   -> No matching envs or no motions for this object_id!")
                 continue
 
             env_tensor = self.env_ids_to_assigned_ids(torch.tensor(matched_envs, device=self.buffer_device))
             motion_indices = torch.where(self._all_motion_object_ids == obj_id)[0]
+            print(
+                f"[ObjectMotion]   -> motions with object_id={obj_id}: indices={motion_indices[:10]}...,"
+                f" total={len(motion_indices)}"
+            )
             self._all_motion_selectable_envs_mask[motion_indices[:, None], env_tensor[None, :]] = True
+
+        # DEBUG: Print mask summary
+        valid_per_env = self._all_motion_selectable_envs_mask.sum(dim=0)
+        print(f"[ObjectMotion] Valid motions per env (first 20): {valid_per_env[:20].tolist()}")
+        print(f"[ObjectMotion] ========== MATCH_SCENE END ==========")
+
+        # Create env-object fixed mapping after match_scene is done
+        # This is called here because _env_usd_paths is set in this method
+        if hasattr(self, "_all_motion_files") and self.cfg.metadata_yaml is not None:
+            if hasattr(self, "_assigned_env_motion_selection"):  # Only create after buffer is initialized
+                self._create_env_object_fixed_mapping()
 
     def _extract_object_properties_from_scene(self, objects_asset) -> list[str]:
         """Extract object properties from scene for matching.
@@ -373,11 +437,65 @@ class ObjectMotion(AmassMotion):
             return env_property == target_value
 
     def _sample_assigned_env_starting_stub(self, env_ids: Sequence[int] | torch.Tensor | None = None) -> None:
-        """Sample motion starting points, ensuring object matching constraints."""
-        if hasattr(self, "_all_motion_selectable_envs_mask"):
-            self._safe_motion_resampling_for_objects(env_ids)
+        """Sample motion using pre-computed object-specific pools (no resample needed!)"""
+        if env_ids is None:
+            env_ids = torch.arange(self.num_assigned_envs, device=self.buffer_device)
+        else:
+            env_ids = torch.as_tensor(env_ids, device=self.buffer_device)
 
-        super()._sample_assigned_env_starting_stub(env_ids)
+        assigned_ids = self.env_ids_to_assigned_ids(env_ids).to(self.buffer_device)
+
+        # Build necessary stubs if not exist
+        if not hasattr(self, "_assigned_env_motion_selection"):
+            self._assigned_env_motion_selection = torch.zeros(
+                self.num_assigned_envs,
+                dtype=torch.long,
+                device=self.buffer_device,
+            )
+        if not hasattr(self, "_motion_buffer_start_time_s"):
+            self._motion_buffer_start_time_s = torch.zeros(
+                self.num_assigned_envs,
+                dtype=torch.float,
+                device=self.buffer_device,
+            )
+
+        # Use fixed pool sampling if available (env-object mapping was created)
+        if hasattr(self, "_assigned_env_object_ids") and hasattr(self, "_assigned_env_motion_pools"):
+            self._sample_from_fixed_pools(assigned_ids)
+        else:
+            # Fallback to parent implementation (will need resample in _safe_motion_resampling_for_objects)
+            # This happens when metadata_yaml is not set or _env_usd_paths is not available
+            self._sample_assigned_env_motion_selection_fallback(assigned_ids)
+
+        # Sample start time (same as parent)
+        self._sample_env_motion_start_time(assigned_ids)
+
+    def _sample_from_fixed_pools(self, assigned_ids: torch.Tensor):
+        """Sample motion from pre-computed object-specific pools (no resample needed!)."""
+        # Get object_id for each assigned_env
+        env_obj_ids = self._assigned_env_object_ids[assigned_ids]
+
+        # Sample from each env's object-specific motion pool
+        for i, assigned_id in enumerate(assigned_ids.tolist()):
+            obj_id = env_obj_ids[i].item()
+            motion_pool = self._assigned_env_motion_pools[obj_id]
+            weights = self._motion_weights[motion_pool]
+            selected_idx = torch.multinomial(weights, 1, replacement=True).item()
+            self._assigned_env_motion_selection[assigned_id] = motion_pool[selected_idx].item()
+
+    def _sample_assigned_env_motion_selection_fallback(self, assigned_ids: torch.Tensor):
+        """Fallback to parent's random sampling (will need resample check)."""
+        self._assigned_env_motion_selection[assigned_ids] = torch.multinomial(
+            self._motion_weights,
+            len(assigned_ids),
+            replacement=True,
+        ).to(self.buffer_device)
+
+        # For fallback case, we still need to check and fix invalid selections
+        # Convert assigned_ids back to env_ids for resampling check
+        if hasattr(self, "_all_motion_selectable_envs_mask") and hasattr(self, "_env_usd_paths"):
+            env_ids = assigned_ids.clone()  # In fallback, assigned_ids == env_ids (0-indexed in buffer)
+            self._safe_motion_resampling_for_objects(env_ids)
 
     def _safe_motion_resampling_for_objects(self, env_ids: Sequence[int] | torch.Tensor | None = None) -> None:
         """Ensure sampled motions are compatible with the environment's object."""
@@ -391,6 +509,8 @@ class ObjectMotion(AmassMotion):
         motion_ids = self._assigned_env_motion_selection[assigned_ids]
 
         invalid_mask = ~self._all_motion_selectable_envs_mask[motion_ids, assigned_ids]
+
+        env_usd_paths = getattr(self, "_env_usd_paths", None)
 
         if invalid_mask.any():
             invalid_assigned_ids = assigned_ids[invalid_mask]
