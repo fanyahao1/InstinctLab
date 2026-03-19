@@ -595,6 +595,11 @@ class ObjectMotion(AmassMotion):
             )
         object_info["ang_vel"] = object_ang_vel
 
+        object_contact = self._extract_optional_tensor_with_candidates(
+            motion_data, [f"{data_key_prefix}_contact", "object_contact"]
+        )
+        object_info["contact"] = object_contact
+
         return object_info
 
     def _extract_tensor_from_data(self, motion_data: dict, key: str, filepath: str, object_name: str) -> torch.Tensor:
@@ -615,8 +620,16 @@ class ObjectMotion(AmassMotion):
             return None
         tensor = torch.from_numpy(motion_data[key]).float()
         if tensor.ndim == 1:
-            tensor = tensor.unsqueeze(0)
+            tensor = tensor.unsqueeze(-1)
         return tensor
+
+    def _extract_optional_tensor_with_candidates(self, motion_data: dict, keys: list[str]) -> torch.Tensor | None:
+        """Extract the first optional tensor found in the candidate keys."""
+        for key in keys:
+            tensor = self._extract_optional_tensor(motion_data, key)
+            if tensor is not None:
+                return tensor
+        return None
 
     def _estimate_object_velocity(
         self, object_pos: torch.Tensor, framerate: torch.Tensor | float, estimation_type: str
@@ -733,6 +746,8 @@ class ObjectMotion(AmassMotion):
             data_buffer.object_data[object_name]["ang_vel"] = torch.zeros(
                 num_envs, num_frames, 3, device=self.output_device
             )
+        if object_info.get("contact") is not None:
+            data_buffer.object_data[object_name]["contact"] = torch.zeros(num_envs, num_frames, device=self.output_device)
 
     def _fill_object_data_fields(
         self,
@@ -773,3 +788,8 @@ class ObjectMotion(AmassMotion):
             data_buffer.object_data[object_name]["ang_vel"][env_ids] = object_info["ang_vel"][
                 motion_ids_across_frame, frame_selections_final
             ].to(self.output_device)
+
+        if "contact" in data_buffer.object_data[object_name] and object_info.get("contact") is not None:
+            data_buffer.object_data[object_name]["contact"][env_ids] = object_info["contact"][
+                motion_ids_across_frame, frame_selections_final
+            ].to(self.output_device).squeeze(-1)
