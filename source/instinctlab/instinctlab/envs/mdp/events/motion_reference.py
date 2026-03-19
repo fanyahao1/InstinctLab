@@ -139,7 +139,6 @@ def _reset_object_state_by_reference(
     randomize_velocity_range: dict[str, tuple[float, float]],
 ):
     """Reset object state based on object_data in motion reference."""
-
     if object_name is None:
         raise ValueError("object_name must be provided when resetting RigidObject")
 

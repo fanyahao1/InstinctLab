@@ -363,6 +363,68 @@ class MotionReferenceMonitorTerm(MonitorTerm):
             return stat
 
 
+class ObjectPoseMonitorTerm(MonitorTerm):
+    """Monitor the object's pose over the episode."""
+
+    def __init__(self, cfg: MonitorTermCfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        if "asset_cfg" not in self.cfg.params:
+            self.cfg.params["asset_cfg"] = SceneEntityCfg("objects")
+
+        self._object_pos_current = torch.zeros(self._env.num_envs, 3, dtype=torch.float32, device=self.device)
+        self._object_rpy_current = torch.zeros(self._env.num_envs, 3, dtype=torch.float32, device=self.device)
+        self._object_pos_sum = torch.zeros(self._env.num_envs, 3, dtype=torch.float32, device=self.device)
+        self._object_rpy_sum = torch.zeros(self._env.num_envs, 3, dtype=torch.float32, device=self.device)
+        self._num_steps = torch.zeros(self._env.num_envs, dtype=torch.int32, device=self.device)
+
+    def update(self, dt: float):
+        asset = self._env.scene[self.cfg.params["asset_cfg"].name]
+        object_pos = asset.data.root_pos_w
+        object_quat = asset.data.root_quat_w
+
+        if self.cfg.params.get("in_base_frame", False):  # type: ignore
+            robot_cfg = self.cfg.params.get("robot_cfg", SceneEntityCfg("robot"))  # type: ignore
+            robot = self._env.scene[robot_cfg.name]
+            object_pos = math_utils.quat_rotate_inverse(robot.data.root_quat_w, object_pos - robot.data.root_pos_w)
+            object_quat = math_utils.quat_mul(math_utils.quat_inv(robot.data.root_quat_w), object_quat)
+
+        object_pos = torch.nan_to_num(object_pos, nan=0.0, posinf=0.0, neginf=0.0)
+        roll, pitch, yaw = math_utils.euler_xyz_from_quat(torch.nan_to_num(object_quat, nan=0.0, posinf=0.0, neginf=0.0))
+        object_rpy = torch.stack([roll, pitch, yaw], dim=-1)
+
+        self._object_pos_current[:] = object_pos
+        self._object_rpy_current[:] = object_rpy
+        self._object_pos_sum += object_pos
+        self._object_rpy_sum += object_rpy
+        self._num_steps += 1
+
+    def reset_idx(self, env_ids: Sequence[int] | slice):
+        num_steps = torch.clamp(self._num_steps[env_ids].unsqueeze(-1), min=1)
+        self._episodic_object_pos = self._object_pos_sum[env_ids] / num_steps
+        self._episodic_object_rpy = self._object_rpy_sum[env_ids] / num_steps
+
+        self._object_pos_sum[env_ids] = 0.0
+        self._object_rpy_sum[env_ids] = 0.0
+        self._num_steps[env_ids] = 0
+
+    def get_log(self, is_episode=False) -> dict[str, float | torch.Tensor]:
+        if is_episode:
+            object_pos = self._episodic_object_pos
+            object_rpy = self._episodic_object_rpy
+        else:
+            object_pos = self._object_pos_current
+            object_rpy = self._object_rpy_current
+
+        return {
+            "pos_x": object_pos[:, 0].mean().item(),
+            "pos_y": object_pos[:, 1].mean().item(),
+            "pos_z": object_pos[:, 2].mean().item(),
+            "roll": object_rpy[:, 0].mean().item(),
+            "pitch": object_rpy[:, 1].mean().item(),
+            "yaw": object_rpy[:, 2].mean().item(),
+        }
+
+
 class ShadowingPositionMonitorTerm(MonitorTerm):
     """Measuring the closeness of the shadowing effect, using the mean position error of the links and the DOFs across
     the trajectory.
