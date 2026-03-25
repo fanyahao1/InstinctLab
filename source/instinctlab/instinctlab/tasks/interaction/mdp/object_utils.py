@@ -3,6 +3,7 @@ from __future__ import annotations
 import torch
 
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.sensors import ContactSensor
 
 
 def safe_unit_quat(quat: torch.Tensor) -> torch.Tensor:
@@ -111,3 +112,18 @@ def get_object_reference_contact(
     )
     validity = motion_reference.data.validity[env_ids, frame_ids].to(contact.dtype)
     return contact, validity
+
+
+def get_filtered_contact_max_force(env, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
+    """Return per-env maximum filtered contact force magnitude for a single contact sensor."""
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    filtered_contact_forces = getattr(contact_sensor.data, "force_matrix_w_history", None)
+    if filtered_contact_forces is None:
+        filtered_contact_forces = contact_sensor.data.force_matrix_w
+    if filtered_contact_forces is None:
+        return torch.zeros(env.num_envs, device=env.device)
+
+    if filtered_contact_forces.dim() == 4:
+        filtered_contact_forces = filtered_contact_forces.unsqueeze(1)
+
+    return torch.norm(filtered_contact_forces, dim=-1).amax(dim=1).amax(dim=-1).amax(dim=-1)

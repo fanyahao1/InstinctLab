@@ -4,9 +4,13 @@ import torch
 import isaaclab.utils.math as math_utils
 from isaaclab.envs import ManagerBasedRLEnv
 from isaaclab.managers import SceneEntityCfg
-from isaaclab.sensors import ContactSensor
 
-from .object_utils import get_object_reference_contact, get_object_reference_state_w, get_object_state_w
+from .object_utils import (
+    get_filtered_contact_max_force,
+    get_object_reference_contact,
+    get_object_reference_state_w,
+    get_object_state_w,
+)
 
 
 def object_position_tracking_gauss(
@@ -91,25 +95,27 @@ def object_angular_velocity_tracking_gauss(
     return torch.exp(-torch.square(error) / (tracking_sigma * tracking_sigma)) * validity
 
 
-def wrist_object_contact_reference_phase(
+def object_contact_reference_phase(
     env: ManagerBasedRLEnv,
-    sensor_cfg: SceneEntityCfg = SceneEntityCfg("hand_object_contact"),
+    sensor_names: list[str] | None = None,
     reference_cfg: SceneEntityCfg = SceneEntityCfg("motion_reference"),
     object_name: str = "box",
-    threshold: float = 1.0,
+    threshold: float = 3.0,
     normalize: bool = True,
     penetration_penalty_scale: float = 1.0,
+    print_reason: bool = False,
+    debug_label: str = "object_contact",
 ) -> torch.Tensor:
-    """Piecewise hand-object reward based on reference contact phase.
+    """Piecewise body-object reward based on reference contact phase."""
+    if sensor_names is None:
+        sensor_names = []
+    if len(sensor_names) == 0:
+        return torch.zeros(env.num_envs, device=env.device)
 
-    During reference contact phase:
-        reward hand-object contact.
-    During reference non-contact phase:
-        penalize current hand-object contact as a penetration/contact proxy.
-    """
-    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
-    contact_forces = contact_sensor.data.net_forces_w_history[:, :, sensor_cfg.body_ids, :]
-    current_contact = (torch.norm(contact_forces, dim=-1).max(dim=1)[0] > threshold).float()
+    current_contact = torch.stack(
+        [(get_filtered_contact_max_force(env, SceneEntityCfg(sensor_name)) > threshold).float() for sensor_name in sensor_names],
+        dim=-1,
+    )
 
     reference_contact, validity = get_object_reference_contact(env, reference_cfg=reference_cfg, object_name=object_name)
     contact_score = current_contact.sum(dim=-1)
@@ -117,4 +123,16 @@ def wrist_object_contact_reference_phase(
     reward = reward * validity
     if normalize and current_contact.shape[-1] > 0:
         reward = reward / current_contact.shape[-1]
+    if print_reason and int(env.common_step_counter) % 50 == 0:
+        sensor_force_max = {
+            sensor_name: get_filtered_contact_max_force(env, SceneEntityCfg(sensor_name)).max().item()
+            for sensor_name in sensor_names
+        }
+        print(
+            f"{debug_label}_debug:",
+            f"step={int(env.common_step_counter)}",
+            f"sensor_filtered_max={sensor_force_max}",
+            f"current_contact_mean={current_contact.mean(dim=0).tolist()}",
+            f"reference_contact_mean={reference_contact.float().mean().item():.4f}",
+        )
     return reward
