@@ -564,25 +564,75 @@ class RewardGroupCfg:
             "std": 3.14,
         },
     )
+    object_pos_tracking_gauss = RewTermCfg(
+        func=interaction_mdp.object_position_tracking_gauss,
+        weight=3.0,
+        params={
+            "asset_cfg": SceneEntityCfg("objects"),
+            "reference_cfg": SceneEntityCfg("motion_reference"),
+            "object_name": "box",
+            # Looser tracking target than body tracking to avoid over-penalizing contact-heavy scenes.
+            "tracking_torlerance": 0.25,
+            "tracking_sigma": 0.8,
+        },
+    )
+    object_rot_tracking_gauss = RewTermCfg(
+        func=interaction_mdp.object_rotation_tracking_gauss,
+        weight=0.6,
+        params={
+            "asset_cfg": SceneEntityCfg("objects"),
+            "reference_cfg": SceneEntityCfg("motion_reference"),
+            "object_name": "box",
+            # Larger orientation tolerance for robust object interaction.
+            "tracking_torlerance": 0.6,
+            "tracking_sigma": 1.0,
+        },
+    )
+    wrist_object_contact_ref_phase = RewTermCfg(
+        func=interaction_mdp.object_contact_reference_phase,
+        weight=3.0,
+        params={
+            "sensor_names": [
+                "left_wrist_object_contact",
+                "right_wrist_object_contact",
+            ],
+            "reference_cfg": SceneEntityCfg("motion_reference"),
+            "object_name": "box",
+            "threshold": 1.0,
+            "normalize": True,
+            "print_reason": False,
+            "debug_label": "wrist_object_contact",
+        },
+    )
+    # object_lin_vel_tracking_gauss = RewTermCfg(
+    #     func=interaction_mdp.object_linear_velocity_tracking_gauss,
+    #     weight=0.35,
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("objects"),
+    #         "reference_cfg": SceneEntityCfg("motion_reference"),
+    #         "object_name": "box",
+    #         "tracking_tolerance": 0.2,
+    #         "tracking_sigma": 1.2,
+    #     },
+    # )
+    # object_ang_vel_tracking_gauss = RewTermCfg(
+    #     func=interaction_mdp.object_angular_velocity_tracking_gauss,
+    #     weight=0.2,
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("objects"),
+    #         "reference_cfg": SceneEntityCfg("motion_reference"),
+    #         "object_name": "box",
+    #         "tracking_tolerance": 0.35,
+    #         "tracking_sigma": 2.5,
+    #     },
+    # )
     action_rate_l2 = RewTermCfg(func=mdp.action_rate_l2, weight=-0.1)
     joint_limit = RewTermCfg(
         func=mdp.joint_pos_limits,
         weight=-10.0,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
     )
-    undesired_contacts = RewTermCfg(
-        func=mdp.undesired_contacts,
-        weight=-0.1,
-        params={
-            "sensor_cfg": SceneEntityCfg(
-                "contact_forces",
-                body_names=[
-                    r"^(?!left_ankle_roll_link$)(?!right_ankle_roll_link$)(?!left_wrist_yaw_link$)(?!right_wrist_yaw_link$).+$"
-                ],
-            ),
-            "threshold": 1.0,
-        },
-    )
+    undesired_contacts = None
 
 
 @configclass
