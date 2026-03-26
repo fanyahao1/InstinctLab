@@ -781,10 +781,59 @@ class TerminationCfg:
     )
 
     dataset_exhausted = DoneTermCfg(
-        func=instinct_mdp.dataset_exhausted,
+        func=interaction_mdp.dataset_exhausted,
         time_out=True,
         params={
             "reference_cfg": SceneEntityCfg("motion_reference"),
+            "print_reason": False,
+        },
+    )
+    object_pos_too_far = DoneTermCfg(
+        func=interaction_mdp.object_position_far_from_reference,
+        time_out=False,
+        params={
+            "asset_cfg": SceneEntityCfg("objects"),
+            "reference_cfg": SceneEntityCfg("motion_reference"),
+            "object_name": "box",
+            "distance_threshold": 1.25,
+            "print_reason": False,
+        },
+    )
+    object_rot_too_far = DoneTermCfg(
+        func=interaction_mdp.object_orientation_far_from_reference,
+        time_out=False,
+        params={
+            "asset_cfg": SceneEntityCfg("objects"),
+            "reference_cfg": SceneEntityCfg("motion_reference"),
+            "object_name": "box",
+            "angle_threshold": 2.4,
+            "print_reason": False,
+        },
+    )
+    object_speed_too_large = DoneTermCfg(
+        func=interaction_mdp.object_velocity_too_large,
+        time_out=False,
+        params={
+            "asset_cfg": SceneEntityCfg("objects"),
+            "max_linear_speed": 10.0,
+            "max_angular_speed": 24.0,
+            "print_reason": False,
+        },
+    )
+    object_lower_body_contact = DoneTermCfg(
+        func=interaction_mdp.any_object_filtered_contact,
+        time_out=False,
+        params={
+            "sensor_names": [
+                "pelvis_object_contact",
+                "left_hip_object_contact",
+                "right_hip_object_contact",
+                "left_knee_object_contact",
+                "right_knee_object_contact",
+                "left_ankle_object_contact",
+                "right_ankle_object_contact",
+            ],
+            "threshold": 1.0,
             "print_reason": False,
         },
     )
