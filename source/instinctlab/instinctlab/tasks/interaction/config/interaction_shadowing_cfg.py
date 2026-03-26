@@ -17,7 +17,7 @@ from isaaclab.utils import configclass
 from isaaclab.utils.noise import UniformNoiseCfg
 
 import instinctlab.envs.mdp as instinct_mdp
-import instinctlab.tasks.shadowing.mdp as shadowing_mdp
+import instinctlab.tasks.interaction.mdp as interaction_mdp
 from instinctlab.envs.manager_based_rl_env_cfg import InstinctLabRLEnvCfg
 from instinctlab.managers import MultiRewardCfg
 from instinctlab.monitors import (
@@ -221,6 +221,103 @@ class ObservationsCfg:
             params={"command_name": "rotation_ref_command"},
             noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
         )
+        object_pos = ObsTermCfg(
+            func=interaction_mdp.object_position,
+            params={
+                "asset_cfg": SceneEntityCfg("objects"),
+                "robot_cfg": SceneEntityCfg("robot"),
+                "in_base_frame": True,
+            },
+            noise=UniformNoiseCfg(n_min=-0.03, n_max=0.03),
+        )
+        object_ori = ObsTermCfg(
+            func=interaction_mdp.object_orientation_tannorm,
+            params={
+                "asset_cfg": SceneEntityCfg("objects"),
+                "robot_cfg": SceneEntityCfg("robot"),
+                "in_base_frame": True,
+            },
+            noise=UniformNoiseCfg(n_min=-0.03, n_max=0.03),
+        )
+        object_pos_ref = ObsTermCfg(
+            func=interaction_mdp.object_reference_position,
+            params={
+                "reference_cfg": SceneEntityCfg("motion_reference"),
+                "robot_cfg": SceneEntityCfg("robot"),
+                "object_name": "box",
+                "in_base_frame": True,
+            },
+            noise=UniformNoiseCfg(n_min=-0.03, n_max=0.03),
+        )
+        object_ori_ref = ObsTermCfg(
+            func=interaction_mdp.object_reference_orientation_tannorm,
+            params={
+                "reference_cfg": SceneEntityCfg("motion_reference"),
+                "robot_cfg": SceneEntityCfg("robot"),
+                "object_name": "box",
+                "in_base_frame": True,
+            },
+            noise=UniformNoiseCfg(n_min=-0.03, n_max=0.03),
+        )
+        object_pos_err = ObsTermCfg(
+            func=interaction_mdp.object_position_error,
+            params={
+                "asset_cfg": SceneEntityCfg("objects"),
+                "reference_cfg": SceneEntityCfg("motion_reference"),
+                "robot_cfg": SceneEntityCfg("robot"),
+                "object_name": "box",
+                "in_base_frame": True,
+            },
+            noise=UniformNoiseCfg(n_min=-0.02, n_max=0.02),
+        )
+        object_ori_err = ObsTermCfg(
+            func=interaction_mdp.object_orientation_error_tannorm,
+            params={
+                "asset_cfg": SceneEntityCfg("objects"),
+                "reference_cfg": SceneEntityCfg("motion_reference"),
+                "object_name": "box",
+            },
+            noise=UniformNoiseCfg(n_min=-0.02, n_max=0.02),
+        )
+        wrist_object_contact = ObsTermCfg(
+            func=interaction_mdp.wrist_object_contact,
+            params={
+                "left_sensor_cfg": SceneEntityCfg("left_wrist_object_contact"),
+                "right_sensor_cfg": SceneEntityCfg("right_wrist_object_contact"),
+                "threshold": 1.0,
+            },
+        )
+        # object_lin_vel = ObsTermCfg(
+        #     func=interaction_mdp.object_linear_velocity,
+        #     params={
+        #         "asset_cfg": SceneEntityCfg("objects"),
+        #         "robot_cfg": SceneEntityCfg("robot"),
+        #         "in_base_frame": True,
+        #     },
+        #     noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
+        # )
+        # object_lin_vel_err = ObsTermCfg(
+        #     func=interaction_mdp.object_linear_velocity_error,
+        #     params={
+        #         "asset_cfg": SceneEntityCfg("objects"),
+        #         "reference_cfg": SceneEntityCfg("motion_reference"),
+        #         "robot_cfg": SceneEntityCfg("robot"),
+        #         "object_name": "box",
+        #         "in_base_frame": True,
+        #     },
+        #     noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
+        # )
+        # object_ang_vel_err = ObsTermCfg(
+        #     func=interaction_mdp.object_angular_velocity_error,
+        #     params={
+        #         "asset_cfg": SceneEntityCfg("objects"),
+        #         "reference_cfg": SceneEntityCfg("motion_reference"),
+        #         "robot_cfg": SceneEntityCfg("robot"),
+        #         "object_name": "box",
+        #         "in_base_frame": True,
+        #     },
+        #     noise=UniformNoiseCfg(n_min=-0.05, n_max=0.05),
+        # )
 
         # proprioception
         # base_lin_vel = ObsTermCfg(
@@ -270,6 +367,102 @@ class ObservationsCfg:
             func=mdp.generated_commands,
             params={"command_name": "rotation_ref_command"},
         )
+        object_pos = ObsTermCfg(
+            func=interaction_mdp.object_position,
+            params={
+                "asset_cfg": SceneEntityCfg("objects"),
+                "robot_cfg": SceneEntityCfg("robot"),
+                "in_base_frame": False,
+            },
+        )
+        object_ori = ObsTermCfg(
+            func=interaction_mdp.object_orientation_tannorm,
+            params={
+                "asset_cfg": SceneEntityCfg("objects"),
+                "robot_cfg": SceneEntityCfg("robot"),
+                "in_base_frame": False,
+            },
+        )
+        object_pos_ref = ObsTermCfg(
+            func=interaction_mdp.object_reference_position,
+            params={
+                "reference_cfg": SceneEntityCfg("motion_reference"),
+                "robot_cfg": SceneEntityCfg("robot"),
+                "object_name": "box",
+                "in_base_frame": False,
+            },
+        )
+        object_ori_ref = ObsTermCfg(
+            func=interaction_mdp.object_reference_orientation_tannorm,
+            params={
+                "reference_cfg": SceneEntityCfg("motion_reference"),
+                "robot_cfg": SceneEntityCfg("robot"),
+                "object_name": "box",
+                "in_base_frame": False,
+            },
+        )
+        object_pos_err = ObsTermCfg(
+            func=interaction_mdp.object_position_error,
+            params={
+                "asset_cfg": SceneEntityCfg("objects"),
+                "reference_cfg": SceneEntityCfg("motion_reference"),
+                "robot_cfg": SceneEntityCfg("robot"),
+                "object_name": "box",
+                "in_base_frame": False,
+            },
+        )
+        object_ori_err = ObsTermCfg(
+            func=interaction_mdp.object_orientation_error_tannorm,
+            params={
+                "asset_cfg": SceneEntityCfg("objects"),
+                "reference_cfg": SceneEntityCfg("motion_reference"),
+                "object_name": "box",
+            },
+        )
+        wrist_object_contact = ObsTermCfg(
+            func=interaction_mdp.wrist_object_contact,
+            params={
+                "left_sensor_cfg": SceneEntityCfg("left_wrist_object_contact"),
+                "right_sensor_cfg": SceneEntityCfg("right_wrist_object_contact"),
+                "threshold": 1.0,
+            },
+        )
+        object_lin_vel = ObsTermCfg(
+            func=interaction_mdp.object_linear_velocity,
+            params={
+                "asset_cfg": SceneEntityCfg("objects"),
+                "robot_cfg": SceneEntityCfg("robot"),
+                "in_base_frame": False,
+            },
+        )
+        object_ang_vel = ObsTermCfg(
+            func=interaction_mdp.object_angular_velocity,
+            params={
+                "asset_cfg": SceneEntityCfg("objects"),
+                "robot_cfg": SceneEntityCfg("robot"),
+                "in_base_frame": False,
+            },
+        )
+        # object_lin_vel_err = ObsTermCfg(
+        #     func=interaction_mdp.object_linear_velocity_error,
+        #     params={
+        #         "asset_cfg": SceneEntityCfg("objects"),
+        #         "reference_cfg": SceneEntityCfg("motion_reference"),
+        #         "robot_cfg": SceneEntityCfg("robot"),
+        #         "object_name": "box",
+        #         "in_base_frame": False,
+        #     },
+        # )
+        # object_ang_vel_err = ObsTermCfg(
+        #     func=interaction_mdp.object_angular_velocity_error,
+        #     params={
+        #         "asset_cfg": SceneEntityCfg("objects"),
+        #         "reference_cfg": SceneEntityCfg("motion_reference"),
+        #         "robot_cfg": SceneEntityCfg("robot"),
+        #         "object_name": "box",
+        #         "in_base_frame": False,
+        #     },
+        # )
 
         # proprioception
         link_pos = ObsTermCfg(
