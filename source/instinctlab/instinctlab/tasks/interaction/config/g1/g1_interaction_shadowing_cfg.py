@@ -66,7 +66,7 @@ class InteractionMotionCfg(ObjectMotionCfgBase):
     motion_interpolate_func = motion_interpolate_bilinear
     velocity_estimation_method = "frontbackward"
     motion_start_height_offset = 0.0
-    motion_bin_length_s = 1.0
+    motion_bin_length_s = None
     env_starting_stub_sampling_strategy = "independent"
     motion_start_from_middle_range = [0.0, 0.0]
 
@@ -106,6 +106,11 @@ motion_reference_cfg = MotionReferenceManagerCfg(
     mp_split_method="Even",
 )
 
+INTERACTION_OBJECT_USD_PATHS = [
+    os.path.join(MOTION_FOLDER, "chair_obj/chair.usd"),
+    # os.path.join(MOTION_FOLDER, "sofa_obj/sofa.usd"),
+]
+
 DUNMMY_OBJECT_CFG = RigidObjectCfg(
     prim_path="{ENV_REGEX_NS}/Object",
     spawn=sim_utils.MultiUsdFileCfg(
@@ -130,6 +135,51 @@ DUNMMY_OBJECT_CFG = RigidObjectCfg(
     init_state=RigidObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 2.0)),
 )
 
+INTERACTION_OBJECT_CFG = RigidObjectCfg(
+    prim_path="{ENV_REGEX_NS}/Object",
+    spawn=sim_utils.MultiUsdFileCfg(
+        usd_path=INTERACTION_OBJECT_USD_PATHS,
+        random_choice=True,
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            disable_gravity=False,
+            retain_accelerations=False,
+            linear_damping=0.0,
+            angular_damping=0.0,
+            max_linear_velocity=1000.0,
+            max_angular_velocity=1000.0,
+            max_depenetration_velocity=1.0,
+        ),
+        activate_contact_sensors=True,
+    ),
+    init_state=RigidObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 1.0)),
+)
+
+INTERACTION_OBJECT_REFERENCE_CFG = RigidObjectCfg(
+    prim_path="{ENV_REGEX_NS}/ObjectReference",
+    spawn=sim_utils.MultiUsdFileCfg(
+        usd_path=INTERACTION_OBJECT_USD_PATHS,
+        random_choice=True,
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            kinematic_enabled=True,
+            disable_gravity=True,
+            retain_accelerations=False,
+            linear_damping=0.0,
+            angular_damping=0.0,
+            max_linear_velocity=1000.0,
+            max_angular_velocity=1000.0,
+            max_depenetration_velocity=1.0,
+        ),
+        collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=False),
+        visual_material=sim_utils.PreviewSurfaceCfg(
+            diffuse_color=(0.08, 0.76, 1.0),
+            opacity=0.28,
+            roughness=0.25,
+        ),
+        activate_contact_sensors=False,
+    ),
+    init_state=RigidObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 2.0)),
+)
+
 
 @configclass
 class G1InteractionShadowingEnvCfg(interaction_cfg.InteractionShadowingEnvCfg):
@@ -138,7 +188,7 @@ class G1InteractionShadowingEnvCfg(interaction_cfg.InteractionShadowingEnvCfg):
         num_envs=4096,
         robot=G1_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot"),
         motion_reference=motion_reference_cfg,
-        objects=DUNMMY_OBJECT_CFG,
+        objects=INTERACTION_OBJECT_CFG,
     )
 
     def __post_init__(self):
@@ -232,7 +282,8 @@ class G1InteractionShadowingEnvCfg_PLAY(G1InteractionShadowingEnvCfg):
         robot=G1_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot"),
         robot_reference=G1_CFG.replace(prim_path="{ENV_REGEX_NS}/RobotReference"),
         motion_reference=motion_reference_cfg.replace(debug_vis=True),
-        objects=DUNMMY_OBJECT_CFG,
+        objects=INTERACTION_OBJECT_CFG,
+        object_reference=INTERACTION_OBJECT_REFERENCE_CFG,
     )
     viewer: ViewerCfg = ViewerCfg(
         eye=[4.0, 0.75, 1.0],
@@ -254,6 +305,9 @@ class G1InteractionShadowingEnvCfg_PLAY(G1InteractionShadowingEnvCfg):
         self.curriculum.beyond_adaptive_sampling = None
         self.events.push_robot = None
         self.events.bin_fail_counter_smoothing = None
+        # TODO(interaction): object trail visualization is temporarily disabled.
+        self.events.update_object_reference_vis = None
+        self.events.reset_object_reference_trail = None
 
         # enable print_reason option in the termination terms
         for term in self.terminations.__dict__.values():
