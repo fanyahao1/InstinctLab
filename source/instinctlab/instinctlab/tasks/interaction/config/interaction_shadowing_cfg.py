@@ -50,6 +50,9 @@ class InteractionShadowingSceneCfg(InteractiveSceneCfg):
     # objects
     objects: RigidObjectCfg = MISSING
 
+    # visualization-only object reference
+    object_reference: RigidObjectCfg = None
+
     # robot reference articulation with object motion
     robot_reference: ArticulationCfg = None
 
@@ -85,10 +88,81 @@ class InteractionShadowingSceneCfg(InteractiveSceneCfg):
     contact_forces = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True, force_threshold=10.0
     )
+    hand_object_contact = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/.*",
+        filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
+        history_length=3,
+        track_air_time=False,
+        force_threshold=1.0,
+    )
+    left_wrist_object_contact = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/left_wrist_yaw_link",
+        filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
+        history_length=3,
+        track_air_time=False,
+        force_threshold=1.0,
+    )
+    right_wrist_object_contact = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/right_wrist_yaw_link",
+        filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
+        history_length=3,
+        track_air_time=False,
+        force_threshold=1.0,
+    )
+    pelvis_object_contact = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/pelvis",
+        filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
+        history_length=3,
+        track_air_time=False,
+        force_threshold=1.0,
+    )
+    left_hip_object_contact = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/left_hip_roll_link",
+        filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
+        history_length=3,
+        track_air_time=False,
+        force_threshold=1.0,
+    )
+    right_hip_object_contact = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/right_hip_roll_link",
+        filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
+        history_length=3,
+        track_air_time=False,
+        force_threshold=1.0,
+    )
+    left_knee_object_contact = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/left_knee_link",
+        filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
+        history_length=3,
+        track_air_time=False,
+        force_threshold=1.0,
+    )
+    right_knee_object_contact = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/right_knee_link",
+        filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
+        history_length=3,
+        track_air_time=False,
+        force_threshold=1.0,
+    )
+    left_ankle_object_contact = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/left_ankle_roll_link",
+        filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
+        history_length=3,
+        track_air_time=False,
+        force_threshold=1.0,
+    )
+    right_ankle_object_contact = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/right_ankle_roll_link",
+        filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
+        history_length=3,
+        track_air_time=False,
+        force_threshold=1.0,
+    )
 
     def __post_init__(self):
         if type(self.motion_reference) is type(MISSING) or not self.motion_reference.debug_vis:
             delattr(self, "robot_reference")
+            delattr(self, "object_reference")
 
 
 @configclass
