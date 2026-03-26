@@ -647,68 +647,25 @@ class EventCfg:
     """BeyondMimic events config such as termination conditions."""
 
     # startup
-    physics_material = EventTermCfg(
-        func=mdp.randomize_rigid_body_material,
-        mode="startup",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-            "static_friction_range": (0.3, 1.6),
-            "dynamic_friction_range": (0.3, 1.2),
-            "restitution_range": (0.0, 0.5),
-            "num_buckets": 64,
-        },
-    )
+    physics_material = None
 
-    add_joint_default_pos = EventTermCfg(
-        func=instinct_mdp.randomize_default_joint_pos,
-        mode="startup",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
-            "offset_distribution_params": (-0.01, 0.01),
-            "operation": "add",
-            "distribution": "uniform",
-        },
-    )
+    add_joint_default_pos = None
 
-    base_com = EventTermCfg(
-        func=instinct_mdp.randomize_rigid_body_coms,
-        mode="startup",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names="torso_link"),
-            "coms_x_distribution_params": (-0.025, 0.025),
-            "coms_y_distribution_params": (-0.05, 0.05),
-            "coms_z_distribution_params": (-0.05, 0.05),
-            "distribution": "uniform",
-        },
-    )
+    base_com = None
 
     # interval
-    push_robot = EventTermCfg(
-        func=mdp.push_by_setting_velocity,
-        mode="interval",
-        interval_range_s=(1.0, 3.0),
-        params={
-            "velocity_range": {
-                "x": (-0.5, 0.5),
-                "y": (-0.5, 0.5),
-                "z": (-0.2, 0.2),
-                "roll": (-0.52, 0.52),
-                "pitch": (-0.52, 0.52),
-                "yaw": (-0.78, 0.78),
-            },
-        },
-    )
+    push_robot = None
 
     # for motion initialization and reset
     match_motion_ref_with_scene = EventTermCfg(
-        func=instinct_mdp.match_motion_ref_with_scene,
+        func=interaction_mdp.match_motion_ref_with_scene,
         mode="startup",
         params={
             "motion_ref_cfg": SceneEntityCfg("motion_reference"),
         },
     )
     reset_robot = EventTermCfg(
-        func=instinct_mdp.reset_robot_state_by_reference,
+        func=interaction_mdp.reset_robot_state_by_reference,
         mode="reset",
         params={
             "motion_ref_cfg": SceneEntityCfg("motion_reference"),
@@ -717,53 +674,29 @@ class EventCfg:
             "dof_vel_ratio": 1.0,
             "base_lin_vel_ratio": 1.0,
             "base_ang_vel_ratio": 1.0,
-            # Pose randomization (+-5cm position, +-6degrees rotation)
-            "randomize_pose_range": {
-                "x": (-0.05, 0.05),
-                "y": (-0.05, 0.05),
-                "z": (-0.01, 0.01),
-                "roll": (-0.1, 0.1),
-                "pitch": (-0.1, 0.1),
-                "yaw": (-0.2, 0.2),
-            },
-            # Velocity randomization (+-0.1 m/s linear, +-0.1 rad/s angular)
-            "randomize_velocity_range": {
-                "x": (-0.5, 0.5),
-                "y": (-0.5, 0.5),
-                "z": (-0.2, 0.2),
-                "roll": (-0.52, 0.52),
-                "pitch": (-0.52, 0.52),
-                "yaw": (-0.78, 0.78),
-            },
-            # Joint position randomization (+-0.1 rad)
-            "randomize_joint_pos_range": (-0.1, 0.1),
+            "randomize_pose_range": {},
+            "randomize_velocity_range": {},
+            "randomize_joint_pos_range": (0.0, 0.0),
         },
     )
     reset_objects = EventTermCfg(
-        func=instinct_mdp.reset_robot_state_by_reference,
+        func=interaction_mdp.reset_robot_state_by_reference,
         mode="reset",
         params={
             "motion_ref_cfg": SceneEntityCfg("motion_reference"),
             "asset_cfg": SceneEntityCfg("objects"),
             "object_name": "box",
             "position_offset": [0.0, 0.0, 0.0],
-            "base_lin_vel_ratio": 0.0,
-            "base_ang_vel_ratio": 0.0,
-            # Object pose randomization (smaller range for objects)
-            "randomize_pose_range": {
-                "x": (-0.02, 0.02),
-                "y": (-0.02, 0.02),
-                "z": (-0.01, 0.01),
-                "roll": (-0.05, 0.05),
-                "pitch": (-0.05, 0.05),
-                "yaw": (-0.1, 0.1),
-            },
-            # Object starts with zero velocity
+            "base_lin_vel_ratio": 1.0,
+            "base_ang_vel_ratio": 1.0,
+            "randomize_pose_range": {},
             "randomize_velocity_range": {},
         },
     )
+    update_object_reference_vis = None
+    reset_object_reference_trail = None
     bin_fail_counter_smoothing = EventTermCfg(
-        func=instinct_mdp.beyondmimic_bin_fail_counter_smoothing,
+        func=interaction_mdp.beyondmimic_bin_fail_counter_smoothing,
         mode="interval",
         interval_range_s=(0.02, 0.02),  # every environment step
         params={
@@ -777,7 +710,21 @@ class CurriculumCfg:
     """BeyondMimic curriculum terms for the MDP."""
 
     beyond_adaptive_sampling = CurriculumTermCfg(  # type: ignore
-        func=instinct_mdp.BeyondMimicAdaptiveWeighting,
+        func=interaction_mdp.BeyondMimicAdaptiveWeighting,
+    )
+    tracking_sigma_annealing = CurriculumTermCfg(  # type: ignore
+        func=interaction_mdp.TrackingSigmaCurriculum,
+        params={
+            "term_names": [
+                "object_pos_tracking_gauss",
+                "object_rot_tracking_gauss",
+            ],
+            "initial_sigmas": [0.8, 1.0],
+            "final_sigmas": [0.2, 0.35],
+            "start_step": 250_000,
+            "end_step": 3_000_000,
+            "min_sigma": 0.1,
+        },
     )
 
 
