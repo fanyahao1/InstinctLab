@@ -25,6 +25,7 @@ from instinctlab.monitors import (
     JointStatMonitorTerm,
     MonitorTermCfg,
     MotionReferenceMonitorTerm,
+    ObjectPoseMonitorTerm,
     ShadowingJointPosMonitorTerm,
     ShadowingJointVelMonitorTerm,
     ShadowingLinkPosMonitorTerm,
@@ -890,6 +891,14 @@ class MonitorCfg:
             asset_cfg=SceneEntityCfg("motion_reference"),
             sample_stat_interval=500,
             top_n_samples=5,
+        ),
+    )
+    object_pose = MonitorTermCfg(
+        func=ObjectPoseMonitorTerm,
+        params=dict(
+            asset_cfg=SceneEntityCfg("objects"),
+            robot_cfg=SceneEntityCfg("robot"),
+            in_base_frame=True,
         ),
     )
     shadowing_position = MonitorTermCfg(
