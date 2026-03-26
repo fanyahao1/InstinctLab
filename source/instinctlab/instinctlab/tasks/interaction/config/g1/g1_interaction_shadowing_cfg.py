@@ -19,7 +19,7 @@ from isaaclab.managers import TerminationTermCfg as DoneTermCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 
-import instinctlab.envs.mdp as instinct_mdp
+import instinctlab.tasks.interaction.mdp as interaction_mdp
 import instinctlab.tasks.interaction.config.interaction_shadowing_cfg as interaction_cfg
 
 ##
@@ -223,17 +223,20 @@ class G1InteractionShadowingEnvCfg(interaction_cfg.InteractionShadowingEnvCfg):
         if motion_buffer.motion_bin_length_s is not None:
             if motion_buffer.env_starting_stub_sampling_strategy == "concat_motion_bins":
                 self.curriculum.beyond_adaptive_sampling = CurriculumTermCfg(  # type: ignore
-                    func=instinct_mdp.BeyondConcatMotionAdaptiveWeighting,
+                    func=interaction_mdp.BeyondConcatMotionAdaptiveWeighting,
                 )
             elif motion_buffer.env_starting_stub_sampling_strategy == "independent":
                 self.curriculum.beyond_adaptive_sampling = CurriculumTermCfg(  # type: ignore
-                    func=instinct_mdp.BeyondMimicAdaptiveWeighting,
+                    func=interaction_mdp.BeyondMimicAdaptiveWeighting,
                 )
             else:
                 raise ValueError(
                     "Unsupported env starting stub sampling method:"
                     f" {motion_buffer.env_starting_stub_sampling_strategy}"
                 )
+        else:
+            self.curriculum.beyond_adaptive_sampling = None
+            self.events.bin_fail_counter_smoothing = None
 
         self.run_name: str = "".join(
             [
