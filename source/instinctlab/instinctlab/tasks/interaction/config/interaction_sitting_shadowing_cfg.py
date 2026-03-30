@@ -4,6 +4,7 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTermCfg
 from isaaclab.utils import configclass
 
+import instinctlab.envs.mdp as instinct_mdp
 import instinctlab.tasks.interaction.config.interaction_shadowing_cfg as base_cfg
 import instinctlab.tasks.interaction.mdp as interaction_mdp
 
@@ -14,21 +15,31 @@ class ObservationsCfg(base_cfg.ObservationsCfg):
 
     @configclass
     class PolicyObsCfg(base_cfg.ObservationsCfg.PolicyObsCfg):
-        wrist_object_contact = None
-        seat_object_contact = ObsTermCfg(
-            func=interaction_mdp.seat_object_contact,
+        depth_image = ObsTermCfg(
+            func=instinct_mdp.visualizable_image,
             params={
-                "sensor_names": [
-                    "pelvis_object_contact",
-                    "left_hip_object_contact",
-                    "right_hip_object_contact",
-                ],
-                "threshold": 1.0,
+                "sensor_cfg": SceneEntityCfg("camera"),
+                "data_type": "distance_to_image_plane_noised",
             },
         )
+        object_pos = None
+        object_ori = None
+        object_pos_ref = None
+        object_ori_ref = None
+        object_pos_err = None
+        object_ori_err = None
+        wrist_object_contact = None
+        seat_object_contact = None
 
     @configclass
     class CriticObsCfg(base_cfg.ObservationsCfg.CriticObsCfg):
+        depth_image = ObsTermCfg(
+            func=instinct_mdp.visualizable_image,
+            params={
+                "sensor_cfg": SceneEntityCfg("camera"),
+                "data_type": "distance_to_image_plane_noised",
+            },
+        )
         wrist_object_contact = None
         seat_object_contact = ObsTermCfg(
             func=interaction_mdp.seat_object_contact,

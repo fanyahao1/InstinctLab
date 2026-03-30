@@ -1,3 +1,4 @@
+import math
 import os
 from dataclasses import MISSING
 
@@ -11,7 +12,7 @@ from isaaclab.managers import RewardTermCfg as RewTermCfg
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTermCfg
 from isaaclab.scene import InteractiveSceneCfg
-from isaaclab.sensors import ContactSensorCfg
+from isaaclab.sensors import ContactSensorCfg, patterns
 from isaaclab.terrains import TerrainGeneratorCfg, TerrainImporterCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.noise import UniformNoiseCfg
@@ -36,7 +37,9 @@ from instinctlab.monitors import (
     TorqueMonitorSensorCfg,
 )
 from instinctlab.motion_reference import MotionReferenceManagerCfg
+from instinctlab.sensors.noisy_camera import NoisyGroupedRayCasterCameraCfg
 from instinctlab.terrains.height_field import PerlinPlaneTerrainCfg
+from instinctlab.utils.noise import CropAndResizeCfg, DepthNormalizationCfg
 
 
 @configclass
@@ -158,6 +161,59 @@ class InteractionShadowingSceneCfg(InteractiveSceneCfg):
         history_length=3,
         track_air_time=False,
         force_threshold=1.0,
+    )
+    camera = NoisyGroupedRayCasterCameraCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/torso_link",
+        mesh_prim_paths=[
+            "/World/ground/",
+            "/World/envs/env_.*/Robot/.*",
+            "/World/envs/env_.*/Object/geometry",
+        ],
+        aux_mesh_and_link_names={
+            "torso_link_rev_1_0": None,
+            "waist_yaw_link_rev_1_0": "waist_yaw_link",
+            "waist_roll_link_rev_1_0": "waist_roll_link",
+            "head_link": "head_link",
+            "left_rubber_hand": "left_rubber_hand",
+            "right_rubber_hand": "right_rubber_hand",
+        },
+        offset=NoisyGroupedRayCasterCameraCfg.OffsetCfg(
+            pos=(
+                0.04764571478 + 0.0039635 - 0.0042 * math.cos(math.radians(48)),
+                0.015,
+                0.46268178553 - 0.044 + 0.0042 * math.sin(math.radians(48)) + 0.016,
+            ),
+            rot=(
+                math.cos(math.radians(0.5) / 2) * math.cos(math.radians(48) / 2),
+                math.sin(math.radians(0.5) / 2),
+                math.sin(math.radians(48) / 2),
+                0.0,
+            ),
+            convention="world",
+        ),
+        attach_yaw_only=False,
+        pattern_cfg=patterns.PinholeCameraPatternCfg(
+            focal_length=1.0,
+            horizontal_aperture=2 * math.tan(math.radians(87) / 2),
+            vertical_aperture=2 * math.tan(math.radians(58) / 2),
+            height=int(270 / 10),
+            width=int(480 / 10),
+        ),
+        data_types=["distance_to_image_plane"],
+        noise_pipeline={
+            "normalize": DepthNormalizationCfg(
+                depth_range=(0.0, 2.0),
+                normalize=True,
+            ),
+            "crop_and_resize": CropAndResizeCfg(
+                crop_region=(2, 2, 2, 2),
+                resize_shape=(18, 32),
+            ),
+        },
+        update_period=0.02,
+        debug_vis=False,
+        depth_clipping_behavior="max",
+        min_distance=0.05,
     )
 
     def __post_init__(self):

@@ -20,6 +20,8 @@ class G1InteractionSittingShadowingEnvCfg(shadowing_g1_cfg.G1InteractionShadowin
         super().__post_init__()
         self.run_name = self.run_name.replace("G1InteractionShadowing", "G1InteractionSittingShadowing")
         self.run_name += "_contactPhaseOnly"
+        self.scene.camera.debug_vis = True
+        self.observations.policy.depth_image.params["debug_vis"] = False
 
 
 @configclass
@@ -33,3 +35,5 @@ class G1InteractionSittingShadowingEnvCfg_PLAY(shadowing_g1_cfg.G1InteractionSha
         super().__post_init__()
         self.run_name = self.run_name.replace("G1InteractionShadowing", "G1InteractionSittingShadowing")
         self.run_name += "_contactPhaseOnly"
+        self.scene.camera.debug_vis = True
+        self.observations.policy.depth_image.params["debug_vis"] = False

@@ -6,8 +6,10 @@ from isaaclab.utils import configclass
 
 from instinctlab.utils.wrappers.instinct_rl import (
     InstinctRlActorCriticCfg,
+    InstinctRlConv2dHeadCfg,
     InstinctRlEncoderActorCriticCfg,
     InstinctRlEncoderActorCriticRecurrentCfg,
+    InstinctRlEncoderMoEActorCriticCfg,
     InstinctRlMlpCfg,
     InstinctRlNormalizerCfg,
     InstinctRlOnPolicyRunnerCfg,
@@ -85,6 +87,24 @@ class EncoderConfigs:
 
 
 @configclass
+class Conv2dHeadEncoderCfg:
+    @configclass
+    class DepthImageEncoderCfg(InstinctRlConv2dHeadCfg):
+        channels = [32, 32]
+        kernel_sizes = [3, 3]
+        strides = [1, 1]
+        paddings = [1, 1]
+        hidden_sizes = [32]
+        nonlinearity = "ReLU"
+        use_maxpool = False
+        output_size = 32
+        component_names = ["depth_image"]
+        takeout_input_components = True
+
+    depth_image = DepthImageEncoderCfg()
+
+
+@configclass
 class PolicyCfgMixin:
     init_noise_std = 1.0
     actor_hidden_dims = [512, 256, 128]
@@ -111,6 +131,16 @@ class MoEPolicyCfg(PolicyCfgMixin, InstinctRlActorCriticCfg):
     critic_hidden_dims = [256, 256, 128]
     num_moe_experts = 8
     moe_gate_hidden_dims = [128, 64]  # Naive MLP for gating: input -> 128 -> 64 -> num_experts
+
+
+@configclass
+class EncoderMoEPolicyCfg(PolicyCfgMixin, InstinctRlEncoderMoEActorCriticCfg):
+    actor_hidden_dims = [256, 256, 128]
+    critic_hidden_dims = [256, 256, 128]
+    num_moe_experts = 8
+    moe_gate_hidden_dims = [128, 64]
+    encoder_configs: Conv2dHeadEncoderCfg = Conv2dHeadEncoderCfg()
+    critic_encoder_configs: Conv2dHeadEncoderCfg = Conv2dHeadEncoderCfg()
 
 
 @configclass
@@ -202,4 +232,14 @@ class G1MultiRewardInteractionShadowingPPORunnerCfg(G1InteractionShadowingPPORun
         return_ = super().__post_init__()
         self.algorithm.advantage_mixing_weights = [0.7, 0.3]
         self.run_name += "_Adv622"
+        return return_
+
+
+@configclass
+class G1InteractionSittingDepthPPORunnerCfg(G1InteractionShadowingPPORunnerCfg):
+    policy: EncoderMoEPolicyCfg = EncoderMoEPolicyCfg()
+
+    def __post_init__(self):
+        return_ = super().__post_init__()
+        self.run_name += "_DepthEncoderMoEPolicy"
         return return_
