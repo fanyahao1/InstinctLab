@@ -100,6 +100,46 @@ class GroupedRayCaster(RayCaster):
                 collision_groups.append(-1)  # default to -1 if no match
         return collision_groups
 
+    def _get_nearest_rigid_body_ancestor_path(self, prim_path: str, stop_path: str | None = None) -> str | None:
+        """Walk upward from a prim path and return the nearest ancestor with RigidBodyAPI."""
+        prim = prim_utils.get_prim_at_path(prim_path)
+        stop_path = str(stop_path) if stop_path is not None else None
+        while prim.IsValid():
+            prim_path_str = prim.GetPath().pathString
+            if prim.HasAPI(UsdPhysics.RigidBodyAPI):
+                return prim_path_str
+            if stop_path is not None and prim_path_str == stop_path:
+                break
+            prim = prim.GetParent()
+        return None
+
+    def _get_nearest_rigid_body_ancestor_name(self, prim_path: str, stop_path: str | None = None) -> str | None:
+        rigid_body_path = self._get_nearest_rigid_body_ancestor_path(prim_path, stop_path)
+        return None if rigid_body_path is None else rigid_body_path.rsplit("/", 1)[-1]
+
+    def _get_descendant_mesh_prims(self, root_prim_path: str) -> list[Usd.Prim]:
+        """Collect descendant meshes, including meshes reachable only through instance proxies."""
+        root_prim = prim_utils.get_prim_at_path(root_prim_path)
+        if not root_prim.IsValid():
+            return []
+
+        descendant_mesh_prims = []
+        for prim in Usd.PrimRange(root_prim, Usd.TraverseInstanceProxies(Usd.PrimAllPrimsPredicate)):
+            if prim.GetPath() == root_prim.GetPath():
+                continue
+            if prim.IsA(UsdGeom.Mesh):
+                descendant_mesh_prims.append(prim)
+        return descendant_mesh_prims
+
+    def _has_matched_xform_ancestor(self, prim: Usd.Prim, matched_xform_paths: set[str]) -> bool:
+        """Whether the prim has an ancestor that is already handled as a matched Xform in the same batch."""
+        current_prim = prim.GetParent()
+        while current_prim.IsValid():
+            if current_prim.GetPath().pathString in matched_xform_paths:
+                return True
+            current_prim = current_prim.GetParent()
+        return False
+
     def _get_merged_mesh_from_xform_prim(self, xform_prim_path: str) -> tuple[np.ndarray, np.ndarray]:
         """Search through the xform prim and its children to find all meshes and merge them into a single warp mesh in
         its local frame.
@@ -141,6 +181,35 @@ class GroupedRayCaster(RayCaster):
             indices.append(local_indices + indices_offset)
             indices_offset += len(transformed_points)
         if len(points) == 0:
+            descendant_mesh_prims = self._get_descendant_mesh_prims(xform_prim_path)
+            transform_root_path = self._get_nearest_rigid_body_ancestor_path(xform_prim_path) or xform_prim_path
+            for mesh_prim in descendant_mesh_prims:
+                mesh = UsdGeom.Mesh(mesh_prim)
+                local_points = np.asarray(mesh.GetPointsAttr().Get())
+                if len(local_points) == 0:
+                    continue
+                local_indices = np.asarray(mesh.GetFaceVertexIndicesAttr().Get())
+
+                # Fallback for non-robot assets where geometry is nested under Xform prims such as
+                # Object/geometry/... instead of Robot/<link>/visuals/.../mesh.
+                local_transform = Gf.Matrix4d(1.0)
+                prim_chain = []
+                current_prim = mesh_prim
+                while current_prim.IsValid() and current_prim.GetPath().pathString != transform_root_path:
+                    prim_chain.append(current_prim)
+                    current_prim = current_prim.GetParent()
+                for xform_prim in reversed(prim_chain):
+                    xformable = UsdGeom.Xformable(xform_prim)
+                    for op in xformable.GetOrderedXformOps():
+                        local_transform = local_transform * op.GetOpTransform(Usd.TimeCode.Default())
+
+                transformed_points = np.array(
+                    [local_transform.Transform(Gf.Vec3f(float(p[0]), float(p[1]), float(p[2])))[:3] for p in local_points]
+                )
+                points.append(transformed_points)
+                indices.append(local_indices + indices_offset)
+                indices_offset += len(transformed_points)
+        if len(points) == 0:
             return None, None
         else:
             return np.concatenate(points, axis=0), np.concatenate(indices, axis=0)
@@ -152,6 +221,14 @@ class GroupedRayCaster(RayCaster):
             This should support multiple meshes and update their positions.
             Use env_ids to specify the collision group ids for the ray caster.
         """
+
+        # Keep this routine re-entrant because some camera code paths can request data before
+        # all grouped-mesh buffers are materialized by the normal initialization flow.
+        self.meshes = dict()
+        self.mesh_prototype_ids = []
+        self.mesh_collision_groups = []
+        self.rigid_body_mesh_transform_segments = dict()
+        self.rigid_body_views = dict()
 
         """ Basic insights of getting rigid bodies mesh.
         prim_utils.get_prim_at_path('/World/envs/env_0/Robot/torso_link/visuals/{torso_link_file_name}/mesh').IsA(UsdGeom.Mesh)
@@ -175,15 +252,24 @@ class GroupedRayCaster(RayCaster):
                     is not None
                 ),
             )
+            matched_xform_paths = {
+                prim.GetPath().pathString for prim in mesh_prims if prim.GetTypeName() == "Xform"
+            }
             # collect and acquire all the meshes in warp format
             wp_meshes = []
             wp_mesh_names = []
+            wp_mesh_rigid_body_names = []
             wp_mesh_ids = []
             for mesh_prim in mesh_prims:
-                mesh_name = mesh_prim.GetPath().pathString.rsplit("/", 1)[-1]
+                if mesh_prim.GetTypeName() in ("Xform", "Mesh") and self._has_matched_xform_ancestor(
+                    mesh_prim, matched_xform_paths
+                ):
+                    continue
+                mesh_prim_path = mesh_prim.GetPath().pathString
+                mesh_name = mesh_prim_path.rsplit("/", 1)[-1]
                 if mesh_prim.GetTypeName() == "Xform":
                     # Get the mesh prim if it is proxy referenced from a Xform prim.
-                    xform_prim_path = mesh_prim.GetPath().pathString
+                    xform_prim_path = mesh_prim_path
                     points, indices = self._get_merged_mesh_from_xform_prim(xform_prim_path)
                     if points is None:
                         continue
@@ -209,11 +295,16 @@ class GroupedRayCaster(RayCaster):
                     )
                     continue
                 wp_mesh_names.append(mesh_name)
+                nearest_rigid_body_name = self._get_nearest_rigid_body_ancestor_name(mesh_prim_path, matched_mesh_prim_paths[0])
+                wp_mesh_rigid_body_names.append(nearest_rigid_body_name or mesh_name)
                 wp_meshes.append(wp_mesh)
                 wp_mesh_ids.append(wp_mesh.id)
+            if len(wp_mesh_ids) == 0:
+                omni.log.warn(f"No valid meshes found for grouped ray-caster path: {mesh_prim_path_regex}. Skipping.")
+                continue
             self.meshes[mesh_prim_path_regex] = wp_meshes
             # collect match rigid body names to mesh ids for transform updates
-            rigid_body_view = self._get_rigid_body_view(env_prim_path_expr, wp_mesh_names)
+            rigid_body_view = self._get_rigid_body_view(env_prim_path_expr, wp_mesh_rigid_body_names)
             if rigid_body_view is None:
                 # no rigid body view found, the mesh transform will not be updated at rollouts.
                 # the meshes transforms will be set to identity.
@@ -275,10 +366,34 @@ class GroupedRayCaster(RayCaster):
             self._mesh_ids_slice_for_group, dtype=torch.int32, device=self._device
         )
 
+    def _ensure_grouped_buffers_initialized(self):
+        """Lazily build grouped mesh buffers when data is queried ahead of the usual init sequence."""
+        mesh_buffers_ready = all(
+            hasattr(self, attr_name)
+            for attr_name in (
+                "mesh_transforms_pyt",
+                "mesh_inv_transforms_pyt",
+                "mesh_collision_groups_pyt",
+                "mesh_prototype_ids_pyt",
+                "all_mesh_indices",
+            )
+        )
+        if not mesh_buffers_ready:
+            self._initialize_warp_meshes()
+
+        ray_group_buffers_ready = all(
+            hasattr(self, attr_name)
+            for attr_name in ("_ray_collision_groups", "_mesh_ids_for_group", "_mesh_ids_slice_for_group")
+        )
+        if not ray_group_buffers_ready and hasattr(self, "_view") and hasattr(self, "num_rays"):
+            self._create_ray_collision_groups()
+
     def _update_mesh_transforms(self, env_ids: torch.Tensor | None = None):
         """Update the mesh transforms for the given environment IDs.
         This will update the mesh transforms based on the rigid body views.
         """
+        self._ensure_grouped_buffers_initialized()
+
         if not self.meshes:
             omni.log.warn("No meshes found for ray casting.")
             return
