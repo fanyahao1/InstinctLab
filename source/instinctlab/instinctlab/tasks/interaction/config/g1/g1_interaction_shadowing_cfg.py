@@ -13,12 +13,14 @@ import isaaclab.sim as sim_utils
 from isaaclab.assets import RigidObjectCfg, RigidObjectCollectionCfg
 from isaaclab.envs import ViewerCfg
 from isaaclab.managers import CurriculumTermCfg
+from isaaclab.managers import EventTermCfg
 from isaaclab.managers import RewardTermCfg as RewTermCfg
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTermCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 
+import instinctlab.envs.mdp as instinct_mdp
 import instinctlab.tasks.interaction.mdp as interaction_mdp
 import instinctlab.tasks.interaction.config.interaction_shadowing_cfg as interaction_cfg
 
@@ -306,11 +308,45 @@ class G1InteractionShadowingEnvCfg_PLAY(G1InteractionShadowingEnvCfg):
         self.scene.motion_reference.visualizing_marker_types = ["relative_links"]
 
         self.curriculum.beyond_adaptive_sampling = None
-        self.events.push_robot = None
         self.events.bin_fail_counter_smoothing = None
         # TODO(interaction): object trail visualization is temporarily disabled.
         self.events.update_object_reference_vis = None
         self.events.reset_object_reference_trail = None
+
+        # Re-enable mild domain randomization for play/eval.
+        self.events.physics_material = EventTermCfg(
+            func=mdp.randomize_rigid_body_material,
+            mode="startup",
+            params={
+                "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
+                "static_friction_range": (0.8, 1.2),
+                "dynamic_friction_range": (0.8, 1.1),
+                "restitution_range": (0.0, 0.1),
+                "num_buckets": 32,
+            },
+        )
+        self.events.add_joint_default_pos = EventTermCfg(
+            func=instinct_mdp.randomize_default_joint_pos,
+            mode="startup",
+            params={
+                "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
+                "offset_distribution_params": (-0.005, 0.005),
+                "operation": "add",
+                "distribution": "uniform",
+            },
+        )
+        self.events.base_com = EventTermCfg(
+            func=instinct_mdp.randomize_rigid_body_coms,
+            mode="startup",
+            params={
+                "asset_cfg": SceneEntityCfg("robot", body_names="torso_link"),
+                "coms_x_distribution_params": (-0.01, 0.01),
+                "coms_y_distribution_params": (-0.02, 0.02),
+                "coms_z_distribution_params": (-0.02, 0.02),
+                "distribution": "uniform",
+            },
+        )
+        self.events.push_robot = None
 
         # enable print_reason option in the termination terms
         for term in self.terminations.__dict__.values():
