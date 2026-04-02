@@ -50,7 +50,8 @@ joint name order:
 
 G1_29DOF_TORSOBASE_CFG = G1_CFG.copy()
 G1_29DOF_TORSOBASE_CFG.spawn = sim_utils.UrdfFileCfg(
-    asset_path=os.path.join(__file_dir__, "resources/unitree_g1/urdf/g1_29dof_torsobase_simplified.urdf"),
+    # asset_path=os.path.join(__file_dir__, "resources/unitree_g1/urdf/g1_29dof_torsobase_simplified.urdf"),
+    asset_path=os.path.join(__file_dir__, "resources/unitree_g1/g1_29dof.urdf"),
     replace_cylinders_with_capsules=False,
     merge_fixed_joints=False,
     fix_base=False,

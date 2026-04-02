@@ -29,6 +29,7 @@ import instinctlab.tasks.interaction.config.interaction_shadowing_cfg as interac
 ##
 from instinctlab.assets.unitree_g1 import (
     G1_29DOF_TORSOBASE_POPSICLE_CFG,
+    G1_29DOF_TORSOBASE_CFG,
     G1_29Dof_TorsoBase_symmetric_augmentation_joint_mapping,
     G1_29Dof_TorsoBase_symmetric_augmentation_joint_reverse_buf,
     beyondmimic_action_scale,
@@ -47,7 +48,7 @@ from instinctlab.motion_reference.motion_files.object_motion_cfg import ObjectMo
 from instinctlab.motion_reference.utils import motion_interpolate_bilinear
 
 combine_method = "prod"
-G1_CFG = G1_29DOF_TORSOBASE_POPSICLE_CFG
+G1_CFG = G1_29DOF_TORSOBASE_CFG
 
 MOTION_FOLDER = "PATH/TO/INTERACTION/MOTION/DATA"
 
@@ -74,9 +75,9 @@ class InteractionMotionCfg(ObjectMotionCfgBase):
 
 
 motion_reference_cfg = MotionReferenceManagerCfg(
-    prim_path="{ENV_REGEX_NS}/Robot/torso_link",
+    prim_path="{ENV_REGEX_NS}/Robot",
     robot_model_path=G1_CFG.spawn.asset_path,
-    reference_prim_path="/World/envs/env_.*/RobotReference/torso_link",
+    reference_prim_path="/World/envs/env_.*/RobotReference",
     link_of_interests=[
         "pelvis",
         "torso_link",
@@ -100,7 +101,7 @@ motion_reference_cfg = MotionReferenceManagerCfg(
     update_period=0.02,
     num_frames=10,
     data_start_from="current_time",
-    visualizing_robot_offset=(0.0, 1.5, 0.0),
+    visualizing_robot_offset=(0.0, 0.0, 0.0),
     visualizing_robot_from="reference_frame",
     motion_buffers={
         "InteractionMotion": InteractionMotionCfg(),
