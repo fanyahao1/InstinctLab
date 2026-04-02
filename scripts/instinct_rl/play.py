@@ -86,6 +86,26 @@ if args_cli.debug:
     debugpy.breakpoint()
 
 
+def _enable_motion_reference_visualization(env_cfg) -> None:
+    """Enable lightweight motion-reference visualization on the current env cfg.
+
+    This avoids switching to the full `-Play` scene variant, which may introduce extra
+    reference articulations that are not compatible with the current asset setup.
+    """
+    scene = getattr(env_cfg, "scene", None)
+    motion_reference = getattr(scene, "motion_reference", None)
+    if motion_reference is None:
+        return
+
+    motion_reference.debug_vis = True
+    if hasattr(motion_reference, "visualizing_marker_types") and not motion_reference.visualizing_marker_types:
+        motion_reference.visualizing_marker_types = ["links"]
+
+    has_reference_robot = hasattr(scene, "robot_reference") and getattr(scene, "robot_reference") is not None
+    if not has_reference_robot:
+        motion_reference.reference_prim_path = None
+
+
 def main():
     """Play with Instinct-RL agent."""
     # parse configuration
@@ -119,6 +139,8 @@ def main():
 
     if args_cli.env_cfg:
         env_cfg = load_pickle(os.path.join(log_dir, "params", "env.pkl"))
+    else:
+        _enable_motion_reference_visualization(env_cfg)
     if args_cli.agent_cfg:
         agent_cfg_dict = load_yaml(os.path.join(log_dir, "params", "agent.yaml"))
     else:

@@ -42,7 +42,7 @@ from instinctlab.monitors import (
     ShadowingBasePosMonitorTerm,
     ShadowingJointReferenceMonitorTerm,
 )
-from instinctlab.motion_reference import MotionReferenceManagerCfg
+from instinctlab.motion_reference import MotionReferenceManagerCfg, NoCollisionPropertiesCfg
 from instinctlab.motion_reference.motion_files.amass_motion_cfg import AmassMotionCfg as AmassMotionCfgBase
 from instinctlab.motion_reference.motion_files.object_motion_cfg import ObjectMotionCfg as ObjectMotionCfgBase
 from instinctlab.motion_reference.utils import motion_interpolate_bilinear
@@ -107,6 +107,15 @@ motion_reference_cfg = MotionReferenceManagerCfg(
         "InteractionMotion": InteractionMotionCfg(),
     },
     mp_split_method="Even",
+)
+
+G1_REFERENCE_CFG = G1_CFG.copy()
+G1_REFERENCE_CFG.spawn.activate_contact_sensors = False
+G1_REFERENCE_CFG.spawn.collision_props = NoCollisionPropertiesCfg()
+G1_REFERENCE_CFG.spawn.visual_material = sim_utils.PreviewSurfaceCfg(
+    diffuse_color=(0.08, 0.76, 1.0),
+    opacity=0.3,
+    roughness=0.25,
 )
 
 INTERACTION_OBJECT_USD_PATHS = [
@@ -287,7 +296,7 @@ class G1InteractionShadowingEnvCfg_PLAY(G1InteractionShadowingEnvCfg):
         num_envs=1,
         env_spacing=2.5,
         robot=G1_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot"),
-        robot_reference=G1_CFG.replace(prim_path="{ENV_REGEX_NS}/RobotReference"),
+        robot_reference=G1_REFERENCE_CFG.replace(prim_path="{ENV_REGEX_NS}/RobotReference"),
         motion_reference=motion_reference_cfg.replace(debug_vis=True),
         objects=INTERACTION_OBJECT_CFG,
         object_reference=INTERACTION_OBJECT_REFERENCE_CFG,
@@ -307,7 +316,7 @@ class G1InteractionShadowingEnvCfg_PLAY(G1InteractionShadowingEnvCfg):
         self.scene.terrain.max_init_terrain_level = None
 
         self.scene.motion_reference.symmetric_augmentation_joint_mapping = None
-        self.scene.motion_reference.visualizing_marker_types = ["relative_links"]
+        self.scene.motion_reference.visualizing_marker_types = ["links"]
 
         self.curriculum.beyond_adaptive_sampling = None
         self.events.bin_fail_counter_smoothing = None
