@@ -710,6 +710,8 @@ class EventCfg:
 
     base_com = None
 
+    object_scale = None
+
     # interval
     push_robot = None
 

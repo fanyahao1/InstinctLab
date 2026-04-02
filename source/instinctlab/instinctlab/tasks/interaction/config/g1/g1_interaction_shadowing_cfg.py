@@ -113,6 +113,7 @@ INTERACTION_OBJECT_USD_PATHS = [
     os.path.join(MOTION_FOLDER, "chair_obj/chair.usd"),
     # os.path.join(MOTION_FOLDER, "sofa_obj/sofa.usd"),
 ]
+INTERACTION_OBJECT_SCALE_RANGE = (0.7, 1.1)
 
 DUNMMY_OBJECT_CFG = RigidObjectCfg(
     prim_path="{ENV_REGEX_NS}/Object",
@@ -344,6 +345,16 @@ class G1InteractionShadowingEnvCfg_PLAY(G1InteractionShadowingEnvCfg):
                 "coms_x_distribution_params": (-0.01, 0.01),
                 "coms_y_distribution_params": (-0.02, 0.02),
                 "coms_z_distribution_params": (-0.02, 0.02),
+                "distribution": "uniform",
+            },
+        )
+        self.events.object_scale = EventTermCfg(
+            func=interaction_mdp.randomize_object_scale,
+            mode="startup",
+            params={
+                "asset_cfg": SceneEntityCfg("objects"),
+                "scale_distribution_params": INTERACTION_OBJECT_SCALE_RANGE,
+                "operation": "scale",
                 "distribution": "uniform",
             },
         )
