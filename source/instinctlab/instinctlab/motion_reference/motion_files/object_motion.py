@@ -532,6 +532,58 @@ class ObjectMotion(AmassMotion):
 
                 self._assigned_env_motion_selection[assigned_id] = resampled_motion_id
 
+    def get_current_object_matching_values(
+        self,
+        env_ids: Sequence[int] | torch.Tensor | None = None,
+        object_matching_key: str | None = None,
+    ) -> list[str]:
+        """Get the current per-env object matching values, such as USD basenames."""
+        assigned_ids = self.env_ids_to_assigned_ids(env_ids).to(self.buffer_device) if env_ids is not None else None
+        if assigned_ids is None:
+            assigned_ids = torch.arange(self.num_assigned_envs, device=self.buffer_device)
+
+        matching_key = self.cfg.object_matching_key if object_matching_key is None else object_matching_key
+        object_id_to_value: dict[int, str] = {}
+        for obj in getattr(self, "yaml_data", {}).get("objects", []):
+            raw_value = str(obj.get(matching_key, ""))
+            object_id_to_value[int(obj["object_id"])] = (
+                os.path.basename(raw_value) if matching_key == "usd_path" else raw_value
+            )
+
+        if hasattr(self, "_assigned_env_object_ids"):
+            object_ids = self._assigned_env_object_ids[assigned_ids].tolist()
+            return [object_id_to_value.get(int(object_id), "") for object_id in object_ids]
+
+        if matching_key == "usd_path" and hasattr(self, "_env_usd_paths"):
+            return [os.path.basename(self._env_usd_paths[idx]) for idx in assigned_ids.tolist()]
+
+        if len(object_id_to_value) == 1:
+            return [next(iter(object_id_to_value.values()))] * len(assigned_ids)
+        return [""] * len(assigned_ids)
+
+    def get_current_object_keys(
+        self,
+        env_ids: Sequence[int] | torch.Tensor | None = None,
+    ) -> list[str]:
+        """Get the current per-env object type labels."""
+        assigned_ids = self.env_ids_to_assigned_ids(env_ids).to(self.buffer_device) if env_ids is not None else None
+        if assigned_ids is None:
+            assigned_ids = torch.arange(self.num_assigned_envs, device=self.buffer_device)
+
+        object_id_to_key: dict[int, str] = {}
+        for obj in getattr(self, "yaml_data", {}).get("objects", []):
+            object_key = str(obj.get("type", obj.get("object_key", "")))
+            if not object_key and "usd_path" in obj:
+                object_key = os.path.splitext(os.path.basename(str(obj["usd_path"])))[0]
+            object_id_to_key[int(obj["object_id"])] = object_key
+
+        if hasattr(self, "_assigned_env_object_ids"):
+            object_ids = self._assigned_env_object_ids[assigned_ids].tolist()
+            return [object_id_to_key.get(int(object_id), "") for object_id in object_ids]
+
+        matching_values = self.get_current_object_matching_values(env_ids=env_ids, object_matching_key="usd_path")
+        return [os.path.splitext(os.path.basename(value))[0] if value else "" for value in matching_values]
+
     def _read_amass_motion_file(self, filepath: str) -> MotionSequence:
         """Read AMASS motion file and extract both human and object motion data."""
         motion_seq = super()._read_amass_motion_file(filepath)

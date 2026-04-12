@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import torch
 
 from isaaclab.managers import SceneEntityCfg
@@ -127,3 +128,43 @@ def get_filtered_contact_max_force(env, sensor_cfg: SceneEntityCfg) -> torch.Ten
         filtered_contact_forces = filtered_contact_forces.unsqueeze(1)
 
     return torch.norm(filtered_contact_forces, dim=-1).amax(dim=1).amax(dim=-1).amax(dim=-1)
+
+
+def get_current_object_usd_basenames(
+    env,
+    reference_cfg: SceneEntityCfg = SceneEntityCfg("motion_reference"),
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("objects"),
+) -> list[str]:
+    """Return the current per-env object USD basenames when available."""
+    motion_reference = env.scene[reference_cfg.name]
+    getter = getattr(motion_reference, "get_current_object_matching_values", None)
+    if callable(getter):
+        values = getter(object_matching_key="usd_path")
+        if len(values) == env.num_envs:
+            return [os.path.basename(value) if value else "" for value in values]
+
+    asset = env.scene[asset_cfg.name]
+    usd_path = getattr(asset.cfg.spawn, "usd_path", None)
+    if isinstance(usd_path, str):
+        return [os.path.basename(usd_path)] * env.num_envs
+    if isinstance(usd_path, list) and len(usd_path) == 1:
+        return [os.path.basename(usd_path[0])] * env.num_envs
+
+    return [""] * env.num_envs
+
+
+def get_current_object_keys(
+    env,
+    reference_cfg: SceneEntityCfg = SceneEntityCfg("motion_reference"),
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("objects"),
+) -> list[str]:
+    """Return the current per-env object keys or type labels when available."""
+    motion_reference = env.scene[reference_cfg.name]
+    getter = getattr(motion_reference, "get_current_object_keys", None)
+    if callable(getter):
+        values = getter()
+        if len(values) == env.num_envs:
+            return values
+
+    basenames = get_current_object_usd_basenames(env, reference_cfg=reference_cfg, asset_cfg=asset_cfg)
+    return [os.path.splitext(name)[0] if name else "" for name in basenames]

@@ -456,6 +456,54 @@ class MotionReferenceManager(SensorBase):
             )  # type: ignore
         return motion_weights
 
+    def get_current_object_matching_values(
+        self,
+        env_ids: Sequence[int] | torch.Tensor | None = None,
+        object_matching_key: str = "usd_path",
+    ) -> list[str]:
+        """Get the current per-env object matching values from object-aware motion buffers."""
+        if env_ids is None:
+            env_ids = self.ALL_INDICES
+        env_ids = torch.as_tensor(env_ids, device=self.device)
+        object_values = [""] * len(env_ids)
+        for name, buffer in self._motion_buffers.items():
+            env_ids_assignment = self._motion_buffer_assignment[name]
+            assert env_ids_assignment.step is None, "Only support continuous env_ids assignment for now."
+            env_ids_this_buffer_mask = torch.logical_and(
+                env_ids >= env_ids_assignment.start, env_ids < env_ids_assignment.stop
+            )
+            if not env_ids_this_buffer_mask.any():
+                continue
+            getter = getattr(buffer, "get_current_object_matching_values", None)
+            if not callable(getter):
+                continue
+            values = getter(env_ids[env_ids_this_buffer_mask], object_matching_key=object_matching_key)
+            for output_idx, value in zip(env_ids_this_buffer_mask.nonzero(as_tuple=True)[0].tolist(), values):
+                object_values[output_idx] = value
+        return object_values
+
+    def get_current_object_keys(self, env_ids: Sequence[int] | torch.Tensor | None = None) -> list[str]:
+        """Get the current per-env object type labels from object-aware motion buffers."""
+        if env_ids is None:
+            env_ids = self.ALL_INDICES
+        env_ids = torch.as_tensor(env_ids, device=self.device)
+        object_keys = [""] * len(env_ids)
+        for name, buffer in self._motion_buffers.items():
+            env_ids_assignment = self._motion_buffer_assignment[name]
+            assert env_ids_assignment.step is None, "Only support continuous env_ids assignment for now."
+            env_ids_this_buffer_mask = torch.logical_and(
+                env_ids >= env_ids_assignment.start, env_ids < env_ids_assignment.stop
+            )
+            if not env_ids_this_buffer_mask.any():
+                continue
+            getter = getattr(buffer, "get_current_object_keys", None)
+            if not callable(getter):
+                continue
+            values = getter(env_ids[env_ids_this_buffer_mask])
+            for output_idx, value in zip(env_ids_this_buffer_mask.nonzero(as_tuple=True)[0].tolist(), values):
+                object_keys[output_idx] = value
+        return object_keys
+
     def update_motion_weights(
         self,
         env_ids: Sequence[int] | torch.Tensor,
