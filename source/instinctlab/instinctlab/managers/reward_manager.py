@@ -91,9 +91,29 @@ class MultiRewardManager(RewardManager):
         """Get the number of reward groups."""
         return len(self.__group_term_names)
 
+    @property
+    def has_debug_vis_implementation(self) -> bool:
+        """Whether any stateful reward term exposes debug visualization."""
+        for group_class_term_cfg in self.__group_class_term_cfgs.values():
+            for term_cfg in group_class_term_cfg:
+                if callable(getattr(term_cfg.func, "set_debug_vis", None)):
+                    return True
+        return False
+
     """
     Operations.
     """
+
+    def set_debug_vis(self, debug_vis: bool) -> bool:
+        """Forward debug-vis toggles to stateful reward terms that support it."""
+        success = False
+        for group_class_term_cfg in self.__group_class_term_cfgs.values():
+            for term_cfg in group_class_term_cfg:
+                setter = getattr(term_cfg.func, "set_debug_vis", None)
+                if callable(setter):
+                    setter(debug_vis)
+                    success = True
+        return success
 
     def reset(self, env_ids: Sequence[int] | None = None) -> dict[str, torch.Tensor]:
         # resolve environment ids

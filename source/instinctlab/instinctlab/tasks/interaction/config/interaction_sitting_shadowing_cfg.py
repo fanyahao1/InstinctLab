@@ -7,6 +7,7 @@ from isaaclab.utils import configclass
 import instinctlab.envs.mdp as instinct_mdp
 import instinctlab.tasks.interaction.config.interaction_shadowing_cfg as base_cfg
 import instinctlab.tasks.interaction.mdp as interaction_mdp
+from instinctlab.monitors import MonitorTermCfg
 
 
 @configclass
@@ -61,24 +62,47 @@ class ObservationsCfg(base_cfg.ObservationsCfg):
 class RewardGroupCfg(base_cfg.RewardGroupCfg):
     """Reward terms for sitting interaction shadowing."""
 
-    object_pos_tracking_gauss = None
-    object_rot_tracking_gauss = None
     wrist_object_contact_ref_phase = None
-    seat_object_contact_ref_phase = RewTermCfg(
-        func=interaction_mdp.object_contact_reference_phase,
-        weight=3.0,
+    seat_object_contact_ref_phase = None
+    sparse_contact_map = RewTermCfg(
+        func=interaction_mdp.SparseContactReward,
+        weight=1.0,
         params={
-            "sensor_names": [
-                "pelvis_object_contact",
-                "left_hip_object_contact",
-                "right_hip_object_contact",
-            ],
+            "asset_cfg": SceneEntityCfg("objects"),
+            "robot_cfg": SceneEntityCfg("robot"),
             "reference_cfg": SceneEntityCfg("motion_reference"),
             "object_name": "box",
-            "threshold": 1.0,
-            "normalize": True,
-            "print_reason": False,
-            "debug_label": "seat_object_contact",
+            "metadata_dir": None,
+            "link_name_map": {
+                "pelvis": "pelvis",
+                "torso": "torso_link",
+                "left_hand": "left_wrist_yaw_link",
+                "right_hand": "right_wrist_yaw_link",
+            },
+            "contact_distance_threshold": 0.12,
+            "forbid_contact_distance_threshold": 0.10,
+            "mandatory_alpha": 10.0,
+            "optional_beta": 8.0,
+            "mandatory_weights": {
+                "proximity": 0.35,
+                "contact": 1.0,
+                "hold": 0.5,
+            },
+            "optional_weights": {
+                "proximity": 0.10,
+                "contact": 0.25,
+            },
+            "forbidden_weight": 1.0,
+            "hold_window": 5,
+            "debug_vis": True,
+            "debug_vis_max_envs": 1,
+            "debug_vis_show_all_points": True,
+            "debug_vis_show_nearest": True,
+            "debug_vis_point_radius": 0.028,
+            "debug_vis_nearest_point_radius": 0.04,
+            "debug_vis_arrow_length_scale": 10.0,
+            "debug_vis_arrow_thickness_scale": (1.0, 1.0, 1.0),
+            "debug_vis_nearest_arrow_thickness_scale": (1.25, 1.25, 1.25),
         },
     )
 
@@ -117,6 +141,19 @@ class TerminationCfg(base_cfg.TerminationCfg):
 
 
 @configclass
+class MonitorCfg(base_cfg.MonitorCfg):
+    """Monitor terms for sparse sitting contact debugging."""
+
+    sparse_contact_map = MonitorTermCfg(
+        func=interaction_mdp.SparseContactMapMonitorTerm,
+        params={
+            "reward_group_name": "rewards",
+            "reward_term_name": "sparse_contact_map",
+        },
+    )
+
+
+@configclass
 class InteractionSittingShadowingEnvCfg(base_cfg.InteractionShadowingEnvCfg):
     """Environment config for sitting interaction shadowing."""
 
@@ -124,3 +161,4 @@ class InteractionSittingShadowingEnvCfg(base_cfg.InteractionShadowingEnvCfg):
     rewards: SingleRewardsCfg = SingleRewardsCfg()
     curriculum: CurriculumCfg = CurriculumCfg()
     terminations: TerminationCfg = TerminationCfg()
+    monitors: MonitorCfg = MonitorCfg()
