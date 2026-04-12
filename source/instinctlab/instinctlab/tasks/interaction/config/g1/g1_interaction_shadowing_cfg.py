@@ -12,8 +12,7 @@ import isaaclab.envs.mdp as mdp
 import isaaclab.sim as sim_utils
 from isaaclab.assets import RigidObjectCfg, RigidObjectCollectionCfg
 from isaaclab.envs import ViewerCfg
-from isaaclab.managers import CurriculumTermCfg
-from isaaclab.managers import EventTermCfg
+from isaaclab.managers import CurriculumTermCfg, EventTermCfg
 from isaaclab.managers import RewardTermCfg as RewTermCfg
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTermCfg
@@ -21,15 +20,15 @@ from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 
 import instinctlab.envs.mdp as instinct_mdp
-import instinctlab.tasks.interaction.mdp as interaction_mdp
 import instinctlab.tasks.interaction.config.interaction_shadowing_cfg as interaction_cfg
+import instinctlab.tasks.interaction.mdp as interaction_mdp
 
 ##
 # Pre-defined configs
 ##
 from instinctlab.assets.unitree_g1 import (
-    G1_29DOF_TORSOBASE_POPSICLE_CFG,
     G1_29DOF_TORSOBASE_CFG,
+    G1_29DOF_TORSOBASE_POPSICLE_CFG,
     G1_29Dof_TorsoBase_symmetric_augmentation_joint_mapping,
     G1_29Dof_TorsoBase_symmetric_augmentation_joint_reverse_buf,
     beyondmimic_action_scale,
@@ -123,30 +122,6 @@ INTERACTION_OBJECT_USD_PATHS = [
     # os.path.join(MOTION_FOLDER, "sofa_obj/sofa.usd"),
 ]
 INTERACTION_OBJECT_SCALE_RANGE = (0.7, 1.1)
-
-DUNMMY_OBJECT_CFG = RigidObjectCfg(
-    prim_path="{ENV_REGEX_NS}/Object",
-    spawn=sim_utils.MultiUsdFileCfg(
-        usd_path=[
-            os.path.join(MOTION_FOLDER, "tiny_box_10cm.usd"),
-            os.path.join(MOTION_FOLDER, "small_box_30cm.usd"),
-            os.path.join(MOTION_FOLDER, "medium_box_50cm.usd"),
-            os.path.join(MOTION_FOLDER, "large_box_80cm.usd"),
-        ],
-        random_choice=True,
-        rigid_props=sim_utils.RigidBodyPropertiesCfg(
-            disable_gravity=False,
-            retain_accelerations=False,
-            linear_damping=0.0,
-            angular_damping=0.0,
-            max_linear_velocity=1000.0,
-            max_angular_velocity=1000.0,
-            max_depenetration_velocity=1.0,
-        ),
-        activate_contact_sensors=True,
-    ),
-    init_state=RigidObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 2.0)),
-)
 
 INTERACTION_OBJECT_CFG = RigidObjectCfg(
     prim_path="{ENV_REGEX_NS}/Object",
@@ -303,24 +278,6 @@ class G1InteractionShadowingEnvCfg(interaction_cfg.InteractionShadowingEnvCfg):
                     and self.commands.position_b_ref_command.anchor_frame == "robot"
                     else ""
                 ),
-                # (
-                #     "_" + "-".join(self.scene.motion_reference.motion_buffers.keys())
-                #     if self.scene.motion_reference.motion_buffers
-                #     else ""
-                # ),
-                # (
-                #     f"_proprioHist{self.observations.policy.joint_pos.history_length}"
-                #     if self.observations.policy.joint_pos.history_length > 0
-                #     else ""
-                # ),
-                # (
-                #     f"_futureRef{self.scene.motion_reference.num_frames}"
-                #     if self.scene.motion_reference.num_frames > 1
-                #     else ""
-                # ),
-                # f"_FrameStartFrom{self.scene.motion_reference.data_start_from}",
-                # "_forLoopMotionWeights",
-                # "_forLoopMotionSample",
                 ("_pgTermXYalso" if not self.terminations.base_pg_too_far.params["z_only"] else ""),
                 (
                     "_concatMotionBins"
@@ -418,61 +375,7 @@ class G1InteractionShadowingEnvCfg_PLAY(G1InteractionShadowingEnvCfg):
                 continue
             if "print_reason" in term.params:
                 term.params["print_reason"] = True
-        # self.episode_length_s = 10.0
-        # for term_name, term in self.terminations.__dict__.items():
-        #     if (not term_name == "dataset_exhausted") and (not term_name == "time_out"):
-        #         self.terminations.__dict__[term_name] = None
 
         # enable debug_vis option in commands
         for cmd in self.commands.__dict__.values():
             cmd.debug_vis = True
-
-        # add PLAY-specific monitor term
-        # self.monitors.shoulder_actuator = MonitorTermCfg(
-        #     func=ActuatorMonitorTerm,
-        #     params={
-        #         "asset_cfg": SceneEntityCfg(name="robot", joint_names="left_shoulder_roll.*"),
-        #         "torque_plot_scale": 1e-2,
-        #         # "joint_vel_plot_scale": 1e-1,
-        #         "joint_power_plot_scale": 1e-1,
-        #     },
-        # )
-        # self.monitors.waist_actuator = MonitorTermCfg(
-        #     func=ActuatorMonitorTerm,
-        #     params={
-        #         "asset_cfg": SceneEntityCfg(name="robot", joint_names="waist_roll.*"),
-        #         "torque_plot_scale": 1e-2,
-        #         # "joint_vel_plot_scale": 1e-1,
-        #         "joint_power_plot_scale": 1e-1,
-        #     },
-        # )
-        # self.monitors.knee_actuator = MonitorTermCfg(
-        #     func=ActuatorMonitorTerm,
-        #     params={
-        #         "asset_cfg": SceneEntityCfg(name="robot", joint_names="left_knee.*"),
-        #         "torque_plot_scale": 1e-2,
-        #         # "joint_vel_plot_scale": 1e-1,
-        #         "joint_power_plot_scale": 1e-1,
-        #     },
-        # )
-        # self.monitors.reward_sum = MonitorTermCfg(
-        #     func=RewardSumMonitorTerm,
-        # )
-        # self.monitors.reference_stat_case = MonitorTermCfg(
-        #     func=ShadowingJointReferenceMonitorTerm,
-        #     params=dict(
-        #         reference_cfg=SceneEntityCfg(
-        #             "motion_reference",
-        #             joint_names=[
-        #                 "left_hip_pitch.*",
-        #             ],
-        #         ),
-        #     ),
-        # )
-        # self.monitors.shadowing_base_pos = MonitorTermCfg(
-        #     func=ShadowingBasePosMonitorTerm,
-        #     params=dict(
-        #         robot_cfg=SceneEntityCfg("robot"),
-        #         motion_reference_cfg=SceneEntityCfg("motion_reference"),
-        #     ),
-        # )
