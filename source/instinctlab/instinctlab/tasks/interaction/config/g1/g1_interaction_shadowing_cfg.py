@@ -164,7 +164,7 @@ INTERACTION_OBJECT_CFG = RigidObjectCfg(
         ),
         activate_contact_sensors=True,
     ),
-    init_state=RigidObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 1.0)),
+    init_state=RigidObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 2.0)),
 )
 
 INTERACTION_OBJECT_REFERENCE_CFG = RigidObjectCfg(
@@ -228,6 +228,49 @@ class G1InteractionShadowingEnvCfg(interaction_cfg.InteractionShadowingEnvCfg):
 
         self.scene.robot.actuators = beyondmimic_g1_29dof_actuators
         self.actions.joint_pos.scale = beyondmimic_action_scale
+
+        self.events.physics_material = EventTermCfg(
+            func=mdp.randomize_rigid_body_material,
+            mode="startup",
+            params={
+                "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
+                "static_friction_range": (0.8, 1.2),
+                "dynamic_friction_range": (0.8, 1.1),
+                "restitution_range": (0.0, 0.1),
+                "num_buckets": 32,
+            },
+        )
+        self.events.add_joint_default_pos = EventTermCfg(
+            func=instinct_mdp.randomize_default_joint_pos,
+            mode="startup",
+            params={
+                "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
+                "offset_distribution_params": (-0.005, 0.005),
+                "operation": "add",
+                "distribution": "uniform",
+            },
+        )
+        self.events.base_com = EventTermCfg(
+            func=instinct_mdp.randomize_rigid_body_coms,
+            mode="startup",
+            params={
+                "asset_cfg": SceneEntityCfg("robot", body_names="torso_link"),
+                "coms_x_distribution_params": (-0.01, 0.01),
+                "coms_y_distribution_params": (-0.02, 0.02),
+                "coms_z_distribution_params": (-0.02, 0.02),
+                "distribution": "uniform",
+            },
+        )
+        self.events.object_scale = EventTermCfg(
+            func=interaction_mdp.randomize_object_scale,
+            mode="prestartup",
+            params={
+                "asset_cfg": SceneEntityCfg("objects"),
+                "scale_distribution_params": INTERACTION_OBJECT_SCALE_RANGE,
+                "operation": "scale",
+                "distribution": "uniform",
+            },
+        )
 
         assert (
             len(list(self.scene.motion_reference.motion_buffers.keys())) == 1
@@ -359,7 +402,7 @@ class G1InteractionShadowingEnvCfg_PLAY(G1InteractionShadowingEnvCfg):
         )
         self.events.object_scale = EventTermCfg(
             func=interaction_mdp.randomize_object_scale,
-            mode="startup",
+            mode="prestartup",
             params={
                 "asset_cfg": SceneEntityCfg("objects"),
                 "scale_distribution_params": INTERACTION_OBJECT_SCALE_RANGE,
