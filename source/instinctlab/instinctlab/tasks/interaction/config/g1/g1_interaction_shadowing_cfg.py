@@ -49,7 +49,7 @@ from instinctlab.motion_reference.utils import motion_interpolate_bilinear
 combine_method = "prod"
 G1_CFG = G1_29DOF_TORSOBASE_CFG
 
-MOTION_FOLDER = "PATH/TO/INTERACTION/MOTION/DATA"
+MOTION_FOLDER = "/home/yangke/KY/InstinctLab_interact/datasets/interaction/output_npz_29dof_with_object"
 
 
 @configclass

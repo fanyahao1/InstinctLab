@@ -23,6 +23,7 @@ class InstinctRlEnv(ManagerBasedRLEnv):
         super().load_managers()
         # replace the parent class's reward manager
         if "reward_group_cfg" in locals():
+            # self._ensure_articulation_handles_ready()
             self.cfg.rewards = reward_group_cfg
             self.reward_manager = MultiRewardManager(self.cfg.rewards, self)
             print("[INFO] Multi-Reward Manager: ", self.reward_manager)
@@ -55,3 +56,24 @@ class InstinctRlEnv(ManagerBasedRLEnv):
     @property
     def num_rewards(self) -> int:
         return getattr(self.reward_manager, "num_rewards", 1)
+
+    # def _ensure_articulation_handles_ready(self):
+    #     """Refresh articulation PhysX handles before resolving custom managers."""
+    #     uninitialized = [
+    #         name for name, asset in self.scene.articulations.items() if getattr(asset, "root_physx_view", None) is None
+    #     ]
+    #     if not uninitialized:
+    #         return
+
+    #     print(f"[WARN] Reinitializing scene articulations before custom manager setup: {uninitialized}")
+    #     self.sim.reset()
+    #     self.scene.update(dt=self.physics_dt)
+
+    #     still_uninitialized = [
+    #         name for name, asset in self.scene.articulations.items() if getattr(asset, "root_physx_view", None) is None
+    #     ]
+    #     if still_uninitialized:
+    #         raise RuntimeError(
+    #             "Failed to initialize articulation PhysX handles before custom manager setup: "
+    #             f"{still_uninitialized}"
+    #         )
