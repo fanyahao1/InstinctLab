@@ -1,9 +1,8 @@
 from __future__ import annotations
 
+import torch
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Sequence
-
-import torch
 
 from .contact_geometry import (
     compute_link_part_center_distance,
@@ -38,6 +37,7 @@ except ImportError:  # pragma: no cover - only used for lightweight unit tests
     class SceneEntityCfg:
         name: str
 
+
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
     from isaaclab.managers import RewardTermCfg
@@ -50,6 +50,7 @@ __all__ = [
     "bucketize_distance_visualization",
     "compute_sparse_contact_reward_components",
     "extract_mandatory_contact_debug_data",
+    "extract_selected_contact_debug_data",
     "get_visualizer_default_scale",
     "resolve_direction_to_arrow_marker",
 ]
@@ -70,7 +71,7 @@ class SparseContactRewardComponents:
 
 @dataclass
 class MandatoryContactDebugData:
-    """Flattened debug visualization data for mandatory link-part point pairs."""
+    """Flattened debug visualization data for selected link-part point pairs."""
 
     all_point_positions: torch.Tensor
     all_arrow_start_positions: torch.Tensor
@@ -121,6 +122,27 @@ def extract_mandatory_contact_debug_data(
         relation = relation.unsqueeze(0).expand(link_pos_w.shape[0], -1, -1)
     if exists_mask.ndim == 1:
         exists_mask = exists_mask.unsqueeze(0).expand(link_pos_w.shape[0], -1)
+
+    mandatory_pair_mask = (relation == 1) & exists_mask[:, None, :]
+    return extract_selected_contact_debug_data(
+        link_pos_w=link_pos_w,
+        part_points_w=part_points_w,
+        point_valid_mask=point_valid_mask,
+        pair_mask=mandatory_pair_mask,
+        max_envs=max_envs,
+    )
+
+
+def extract_selected_contact_debug_data(
+    link_pos_w: torch.Tensor,
+    part_points_w: torch.Tensor,
+    point_valid_mask: torch.Tensor,
+    pair_mask: torch.Tensor,
+    max_envs: int | None = None,
+) -> MandatoryContactDebugData:
+    """Extract flattened debug geometry for any selected link-part pairs."""
+    if pair_mask.ndim == 2:
+        pair_mask = pair_mask.unsqueeze(0).expand(link_pos_w.shape[0], -1, -1)
     if point_valid_mask.ndim == 2:
         point_valid_mask = point_valid_mask.unsqueeze(0).expand(link_pos_w.shape[0], -1, -1)
 
@@ -128,26 +150,22 @@ def extract_mandatory_contact_debug_data(
         max_envs = max(int(max_envs), 0)
         link_pos_w = link_pos_w[:max_envs]
         part_points_w = part_points_w[:max_envs]
-        relation = relation[:max_envs]
-        exists_mask = exists_mask[:max_envs]
+        pair_mask = pair_mask[:max_envs]
         point_valid_mask = point_valid_mask[:max_envs]
 
     if link_pos_w.shape[0] == 0:
         return _empty_mandatory_contact_debug_data(device=link_pos_w.device)
 
-    mandatory_pair_mask = (relation == 1) & exists_mask[:, None, :]
-    mandatory_point_mask = mandatory_pair_mask[:, :, :, None] & point_valid_mask[:, None, :, :]
+    selected_point_mask = pair_mask[:, :, :, None] & point_valid_mask[:, None, :, :]
 
     expanded_start_positions = link_pos_w[:, :, None, None, :].expand(
         -1, -1, part_points_w.shape[1], part_points_w.shape[2], -1
     )
-    expanded_part_points = part_points_w[:, None, :, :, :].expand(
-        -1, link_pos_w.shape[1], -1, -1, -1
-    )
+    expanded_part_points = part_points_w[:, None, :, :, :].expand(-1, link_pos_w.shape[1], -1, -1, -1)
 
-    if mandatory_point_mask.any():
-        all_arrow_start_positions = expanded_start_positions[mandatory_point_mask]
-        all_point_positions = expanded_part_points[mandatory_point_mask]
+    if selected_point_mask.any():
+        all_arrow_start_positions = expanded_start_positions[selected_point_mask]
+        all_point_positions = expanded_part_points[selected_point_mask]
         all_arrow_directions = all_point_positions - all_arrow_start_positions
     else:
         empty = torch.zeros((0, 3), dtype=link_pos_w.dtype, device=link_pos_w.device)
@@ -156,7 +174,7 @@ def extract_mandatory_contact_debug_data(
         all_arrow_directions = empty
 
     point_distances = torch.linalg.vector_norm(expanded_part_points - expanded_start_positions, dim=-1)
-    point_distances = point_distances.masked_fill(~mandatory_point_mask, torch.inf)
+    point_distances = point_distances.masked_fill(~selected_point_mask, torch.inf)
     nearest_point_indices = point_distances.argmin(dim=-1)
     valid_nearest_mask = torch.isfinite(point_distances).any(dim=-1)
 
@@ -224,7 +242,9 @@ def resolve_direction_to_arrow_marker(
         torch.tensor([1.0, 0.0, 0.0, 0.0], dtype=direction.dtype, device=direction.device).expand_as(arrow_quat),
     )
 
-    arrow_scale = torch.tensor(default_scale, dtype=direction.dtype, device=direction.device).repeat(direction.shape[0], 1)
+    arrow_scale = torch.tensor(default_scale, dtype=direction.dtype, device=direction.device).repeat(
+        direction.shape[0], 1
+    )
     arrow_scale[:, 0] *= norms.squeeze(-1) * float(length_scale_factor)
     arrow_pos = start_point + 0.25 * direction
     return arrow_scale, arrow_quat, arrow_pos
@@ -387,6 +407,7 @@ class SparseContactReward(ManagerTermBase):
         self.debug_vis_nearest_arrow_thickness_scale = tuple(
             params.get("debug_vis_nearest_arrow_thickness_scale", (1.25, 1.25, 1.25))
         )
+        self.debug_vis_part_names = tuple(str(name) for name in params.get("debug_vis_part_names", ()))
         self.debug_vis_distance_bucket_thresholds = tuple(
             params.get("debug_vis_distance_bucket_thresholds", (0.12, 0.30))
         )
@@ -459,19 +480,23 @@ class SparseContactReward(ManagerTermBase):
         debug_vis_arrow_length_scale: float | None = None,
         debug_vis_arrow_thickness_scale: Sequence[float] | None = None,
         debug_vis_nearest_arrow_thickness_scale: Sequence[float] | None = None,
+        debug_vis_part_names: Sequence[str] | None = None,
         debug_vis_distance_bucket_thresholds: Sequence[float] | None = None,
     ) -> torch.Tensor:
         del metadata_dir, link_name_map, hold_window, debug_vis, debug_vis_max_envs
         del debug_vis_show_all_points, debug_vis_show_nearest
         del debug_vis_point_radius, debug_vis_nearest_point_radius, debug_vis_arrow_length_scale
         del debug_vis_arrow_thickness_scale, debug_vis_nearest_arrow_thickness_scale
+        del debug_vis_part_names
         del debug_vis_distance_bucket_thresholds
 
         object_pos_w, object_quat_w, _, _ = get_object_state_w(env, asset_cfg)
         robot: Articulation = env.scene[robot_cfg.name]
         link_pos_w = robot.data.body_pos_w[:, self._link_body_ids, :]
 
-        object_metadata_indices = self._resolve_object_metadata_indices(env, asset_cfg=asset_cfg, reference_cfg=reference_cfg)
+        object_metadata_indices = self._resolve_object_metadata_indices(
+            env, asset_cfg=asset_cfg, reference_cfg=reference_cfg
+        )
         part_points_local = self._metadata_bundle["points_local"][object_metadata_indices]
         part_centers_local = self._metadata_bundle["centers_local"][object_metadata_indices]
         point_valid_mask = self._metadata_bundle["point_valid_mask"][object_metadata_indices]
@@ -693,14 +718,24 @@ class SparseContactReward(ManagerTermBase):
         if not self.debug_vis:
             return
 
-        debug_data = extract_mandatory_contact_debug_data(
-            link_pos_w=link_pos_w,
-            part_points_w=part_points_w,
-            relation=relation,
-            exists_mask=exists_mask,
-            point_valid_mask=point_valid_mask,
-            max_envs=self.debug_vis_max_envs,
-        )
+        if len(self.debug_vis_part_names) > 0:
+            debug_pair_mask = self._build_debug_pair_mask(exists_mask=exists_mask)
+            debug_data = extract_selected_contact_debug_data(
+                link_pos_w=link_pos_w,
+                part_points_w=part_points_w,
+                point_valid_mask=point_valid_mask,
+                pair_mask=debug_pair_mask,
+                max_envs=self.debug_vis_max_envs,
+            )
+        else:
+            debug_data = extract_mandatory_contact_debug_data(
+                link_pos_w=link_pos_w,
+                part_points_w=part_points_w,
+                relation=relation,
+                exists_mask=exists_mask,
+                point_valid_mask=point_valid_mask,
+                max_envs=self.debug_vis_max_envs,
+            )
 
         if self.debug_vis_show_all_points and debug_data.all_point_positions.shape[0] > 0:
             self._set_visualizer_visibility(self._point_visualizer, True)
@@ -750,6 +785,25 @@ class SparseContactReward(ManagerTermBase):
     def _set_visualizer_visibility(visualizer, visible: bool) -> None:
         if visualizer is not None:
             visualizer.set_visibility(visible)
+
+    def _build_debug_pair_mask(self, exists_mask: torch.Tensor) -> torch.Tensor:
+        pair_mask = torch.zeros(
+            exists_mask.shape[0],
+            len(self._robot_links),
+            len(self._object_parts_order),
+            dtype=torch.bool,
+            device=exists_mask.device,
+        )
+        selected_parts = set(self.debug_vis_part_names)
+        for link_name, part_name in self.DEBUG_PAIR_NAMES:
+            if len(selected_parts) > 0 and part_name not in selected_parts:
+                continue
+            if link_name not in self._link_name_to_idx or part_name not in self._part_name_to_idx:
+                continue
+            link_idx = self._link_name_to_idx[link_name]
+            part_idx = self._part_name_to_idx[part_name]
+            pair_mask[:, link_idx, part_idx] = exists_mask[:, part_idx]
+        return pair_mask
 
 
 def _build_metadata_bundle(

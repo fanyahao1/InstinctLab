@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import torch
 import types
 from pathlib import Path
-
-import torch
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -65,6 +64,7 @@ load_sparse_contact_map_directory = contact_map_loader.load_sparse_contact_map_d
 SlidingWindowContactBuffer = sparse_contact_reward.SlidingWindowContactBuffer
 compute_sparse_contact_reward_components = sparse_contact_reward.compute_sparse_contact_reward_components
 extract_mandatory_contact_debug_data = sparse_contact_reward.extract_mandatory_contact_debug_data
+extract_selected_contact_debug_data = sparse_contact_reward.extract_selected_contact_debug_data
 resolve_direction_to_arrow_marker = sparse_contact_reward.resolve_direction_to_arrow_marker
 bucketize_distance_visualization = sparse_contact_reward.bucketize_distance_visualization
 get_visualizer_default_scale = sparse_contact_reward.get_visualizer_default_scale
@@ -208,6 +208,57 @@ def test_extract_mandatory_contact_debug_data_only_keeps_mandatory_points_and_ne
     assert torch.allclose(debug_data.nearest_arrow_directions[0], torch.tensor([1.0, 0.0, 0.0]))
 
 
+def test_extract_selected_contact_debug_data_keeps_only_requested_pairs():
+    link_pos_w = torch.tensor(
+        [
+            [[0.0, 0.0, 0.0], [10.0, 10.0, 10.0]],
+        ],
+        dtype=torch.float32,
+    )
+    part_points_w = torch.tensor(
+        [
+            [
+                [[1.0, 0.0, 0.0], [2.0, 0.0, 0.0]],
+                [[0.0, 5.0, 0.0], [0.0, 6.0, 0.0]],
+            ]
+        ],
+        dtype=torch.float32,
+    )
+    point_valid_mask = torch.tensor(
+        [
+            [[True, True], [True, True]],
+        ],
+        dtype=torch.bool,
+    )
+    pair_mask = torch.tensor(
+        [
+            [[False, True], [False, False]],
+        ],
+        dtype=torch.bool,
+    )
+
+    debug_data = extract_selected_contact_debug_data(
+        link_pos_w=link_pos_w,
+        part_points_w=part_points_w,
+        point_valid_mask=point_valid_mask,
+        pair_mask=pair_mask,
+        max_envs=1,
+    )
+
+    assert debug_data.all_point_positions.shape == (2, 3)
+    assert torch.allclose(
+        debug_data.all_point_positions,
+        torch.tensor([[0.0, 5.0, 0.0], [0.0, 6.0, 0.0]], dtype=torch.float32),
+    )
+    assert torch.allclose(
+        debug_data.all_arrow_start_positions,
+        torch.zeros((2, 3), dtype=torch.float32) + torch.tensor([0.0, 0.0, 0.0], dtype=torch.float32),
+    )
+    assert debug_data.nearest_point_positions.shape == (1, 3)
+    assert torch.allclose(debug_data.nearest_point_positions[0], torch.tensor([0.0, 5.0, 0.0]))
+    assert torch.allclose(debug_data.nearest_arrow_start_positions[0], torch.tensor([0.0, 0.0, 0.0]))
+
+
 def test_resolve_direction_to_arrow_marker_preserves_length_and_start_direction():
     direction = torch.tensor([[2.0, 0.0, 0.0], [0.0, 3.0, 0.0]], dtype=torch.float32)
     start_point = torch.tensor([[1.0, 1.0, 1.0], [4.0, 5.0, 6.0]], dtype=torch.float32)
@@ -241,7 +292,9 @@ def test_get_visualizer_default_scale_supports_named_or_fallback_markers():
     near_marker = types.SimpleNamespace(scale=(4.0, 5.0, 6.0))
 
     arrow_visualizer = types.SimpleNamespace(cfg=types.SimpleNamespace(markers={"arrow": arrow_marker}))
-    nearest_visualizer = types.SimpleNamespace(cfg=types.SimpleNamespace(markers={"near": near_marker, "mid": arrow_marker}))
+    nearest_visualizer = types.SimpleNamespace(
+        cfg=types.SimpleNamespace(markers={"near": near_marker, "mid": arrow_marker})
+    )
 
     assert get_visualizer_default_scale(arrow_visualizer, preferred_key="arrow") == (1.0, 2.0, 3.0)
     assert get_visualizer_default_scale(nearest_visualizer, preferred_key="near") == (4.0, 5.0, 6.0)
