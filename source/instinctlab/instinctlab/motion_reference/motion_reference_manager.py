@@ -1018,14 +1018,45 @@ class MotionReferenceManager(SensorBase):
             indices=self.ALL_INDICES,
         )
 
+    def _get_active_visualizer_markers(self) -> tuple[list[str], dict[str, object]]:
+        # Return active marker types and marker configs in the order used by the visualizer.
+        marker_type_to_cfg_name = {
+            "root": "root_frame_ref",
+            "links": "link_ref",
+            "relative_links": "relative_link_ref",
+        }
+        active_marker_types: list[str] = []
+        active_markers: dict[str, object] = {}
+        for marker_type in self.cfg.visualizing_marker_types:
+            cfg_name = marker_type_to_cfg_name.get(marker_type)
+            if cfg_name is None:
+                continue
+            marker_cfg = self.cfg.visualizer_cfg.markers.get(cfg_name)
+            if marker_cfg is None:
+                continue
+            active_marker_types.append(marker_type)
+            active_markers[cfg_name] = marker_cfg
+        return active_marker_types, active_markers
+
     def _set_debug_vis_impl(self, debug_vis: bool):
         # set visibility of markers
         # note: parent only deals with callbacks. not their visibility
         if debug_vis and self.cfg.visualizing_marker_types:
-            if not hasattr(self, "_visualizer"):
-                self._visualizer = VisualizationMarkers(self.cfg.visualizer_cfg)
+            active_marker_types, active_markers = self._get_active_visualizer_markers()
+            if active_markers:
+                needs_rebuild = (
+                    (not hasattr(self, "_visualizer"))
+                    or (not hasattr(self, "_visualizer_marker_types"))
+                    or (self._visualizer_marker_types != tuple(active_marker_types))
+                )
+                if needs_rebuild:
+                    visualizer_cfg = copy(self.cfg.visualizer_cfg)
+                    visualizer_cfg.markers = active_markers
+                    self._visualizer = VisualizationMarkers(visualizer_cfg)
+                    self._visualizer_marker_types = tuple(active_marker_types)
             # set their visibility to true
-            self._visualizer.set_visibility(True)
+            if hasattr(self, "_visualizer"):
+                self._visualizer.set_visibility(True)
         else:
             if hasattr(self, "_visualizer"):
                 self._visualizer.set_visibility(False)
@@ -1040,28 +1071,40 @@ class MotionReferenceManager(SensorBase):
             quat_list = []
             index_list = []
 
-            if "root" in self.cfg.visualizing_marker_types:
+            active_marker_types = list(getattr(self, "_visualizer_marker_types", tuple()))
+            marker_type_to_index = {marker_type: index for index, marker_type in enumerate(active_marker_types)}
+
+            if "root" in marker_type_to_index:
                 root_pos_w = self.data.base_pos_w[self.ALL_INDICES, aiming_frame_idx]
                 root_quat_w = self.data.base_quat_w[self.ALL_INDICES, aiming_frame_idx]
-                root_indices = torch.ones(self._view.count, device=self.device, dtype=torch.long) * 0
+                root_indices = torch.full(
+                    (self._view.count,), marker_type_to_index["root"], device=self.device, dtype=torch.long
+                )
 
                 pos_list.append(root_pos_w.reshape(-1, 3))
                 quat_list.append(root_quat_w.reshape(-1, 4))
                 index_list.append(root_indices.reshape(-1))
 
-            if "links" in self.cfg.visualizing_marker_types:
+            if "links" in marker_type_to_index:
                 link_pos_w = self.data.link_pos_w[self.ALL_INDICES, aiming_frame_idx]
                 link_quat_w = self.data.link_quat_w[self.ALL_INDICES, aiming_frame_idx]
-                link_indices = torch.ones(link_pos_w.shape[:2], device=self.device, dtype=torch.long) * 1
+                link_indices = torch.full(
+                    link_pos_w.shape[:2], marker_type_to_index["links"], device=self.device, dtype=torch.long
+                )
 
                 pos_list.append(link_pos_w.reshape(-1, 3))
                 quat_list.append(link_quat_w.reshape(-1, 4))
                 index_list.append(link_indices.reshape(-1))
 
-            if "relative_links" in self.cfg.visualizing_marker_types:
+            if "relative_links" in marker_type_to_index:
                 link_pos_w = self.reference_link_pos_relative_w
                 link_quat_w = self.reference_link_quat_relative_w
-                link_indices = torch.ones(link_pos_w.shape[:2], device=self.device, dtype=torch.long) * 2
+                link_indices = torch.full(
+                    link_pos_w.shape[:2],
+                    marker_type_to_index["relative_links"],
+                    device=self.device,
+                    dtype=torch.long,
+                )
 
                 pos_list.append(link_pos_w.reshape(-1, 3))
                 quat_list.append(link_quat_w.reshape(-1, 4))
